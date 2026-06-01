@@ -1,56 +1,65 @@
-# Idaho Lottery MLX Prediction Suite
+# Lotto America MLX Model
 
-## Overview
+Train an MLX model using historical Lotto America drawings.
 
-This project provides utilities for:
+Generate ranked ticket candidates based on:
 
-- Scraping Idaho Lottery historical results
-- Exporting CSV files
-- Training MLX machine-learning models
-- Generating ranked ticket candidates
-- Serving lottery data through REST APIs
+- ML probability
+- Hot numbers
+- Overdue numbers
+- Pair frequency
+- Number balance
+- Star Ball probability
 
-Supported Games:
-
-- Idaho Pick 3
-- Idaho Cash
-
-## Files
-
-- scrape_idaho_pick3.py
-- scrape_idaho_cash.py
-- pick3_mlx_ticket_model.py
-- idaho_cash_mlx_ticket_model.py
-- pick3_csv_web_service.py
-- README.md
-
-## Quick Start
-
-Install dependencies:
+## Generate 5 Tickets
 
 ```bash
-pip install pandas numpy requests beautifulsoup4 fastapi uvicorn mlx
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --tickets 5
 ```
 
-Scrape data:
+## Balanced Strategy
 
 ```bash
-python scrape_idaho_pick3.py
-python scrape_idaho_cash.py
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --ticket-type balanced \
+    --tickets 10
 ```
 
-Generate Pick 3 tickets:
+## Hot Numbers Strategy
 
 ```bash
-python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw Night --tickets 5
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --ticket-type hot \
+    --tickets 10
 ```
 
-Generate Idaho Cash tickets:
+## Overdue Strategy
 
 ```bash
-python idaho_cash_mlx_ticket_model.py --csv idaho_cash_history.csv --tickets 5
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --ticket-type overdue \
+    --tickets 10
 ```
 
-## Disclaimer
+## Hot + Overdue Strategy
 
-Lottery drawings are random. These models analyze historical patterns and rank candidate tickets but cannot predict future lottery results with certainty.
+```bash
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --ticket-type hot_overdue \
+    --tickets 10
+```
+
+## Export Results
+
+```bash
+python lotto_america_mlx_ticket_model.py \
+    --csv lotto_america_history.csv \
+    --tickets 20 \
+    --output lotto_america_predictions.csv
+```
