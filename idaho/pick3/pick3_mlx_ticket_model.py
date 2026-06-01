@@ -509,7 +509,7 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="idaho_pick3_history.csv",
+        default="data/idaho_pick3_history.csv",
         help="CSV output from scrape_idaho_pick3.py. Default: idaho_pick3_history.csv",
     )
 

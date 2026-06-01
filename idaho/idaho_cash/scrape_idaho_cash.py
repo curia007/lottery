@@ -33,7 +33,7 @@ from bs4 import BeautifulSoup
 
 
 URL = "https://www.idaholottery.com/drawgame/history/idaho-cash"
-DEFAULT_OUTPUT = "idaho_cash_history.csv"
+DEFAULT_OUTPUT = "data/idaho_cash_history.csv"
 
 
 def fetch_html(url: str) -> str:
