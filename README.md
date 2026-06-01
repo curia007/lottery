@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project provides a complete lottery analytics and prediction framework for Idaho Lottery games using Python and Apple's MLX framework.
+This project provides a complete lottery analytics, scraping, prediction, and REST service framework for Idaho Lottery games using Python and Apple's MLX machine learning framework.
 
 Features include:
 
@@ -12,12 +12,14 @@ Features include:
 * Ranked ticket generation
 * Hot number analysis
 * Overdue number analysis
+* Exact and Any Order ticket support
 * REST API services
 * Automated scheduling support
 
 Supported Games:
 
 * Idaho Pick 3
+* Idaho Pick 4
 * Idaho Cash
 * Lotto America
 * Millionaire for Life
@@ -29,11 +31,13 @@ Supported Games:
 ```text
 .
 ├── scrape_idaho_pick3.py
+├── scrape_idaho_pick4.py
 ├── scrape_idaho_cash.py
 ├── scrape_lotto_america.py
 ├── scrape_millionaire_life.py
 │
 ├── pick3_mlx_ticket_model.py
+├── pick4_mlx_number_select_model.py
 ├── idaho_cash_mlx_ticket_model.py
 ├── lotto_america_mlx_ticket_model.py
 ├── millionaire_life_mlx_ticket_model.py
@@ -41,6 +45,7 @@ Supported Games:
 ├── pick3_csv_web_service.py
 │
 ├── idaho_pick3_history.csv
+├── idaho_pick4_history.csv
 ├── idaho_cash_history.csv
 ├── lotto_america_history.csv
 ├── millionaire_life_history.csv
@@ -95,7 +100,7 @@ idaho_pick3_history.csv
 python pick3_mlx_ticket_model.py \
     --csv idaho_pick3_history.csv \
     --draw Night \
-    --tickets 5
+    --tickets 10
 ```
 
 ## Generate Day Draw Predictions
@@ -104,25 +109,100 @@ python pick3_mlx_ticket_model.py \
 python pick3_mlx_ticket_model.py \
     --csv idaho_pick3_history.csv \
     --draw Day \
-    --tickets 5
-```
-
-## Exact Order
-
-```bash
-python pick3_mlx_ticket_model.py \
-    --draw Night \
-    --ticket-type exact \
     --tickets 10
 ```
 
-## Any Order
+---
+
+# Idaho Pick 4
+
+## Scrape History
 
 ```bash
-python pick3_mlx_ticket_model.py \
+python scrape_idaho_pick4.py
+```
+
+Output:
+
+```text
+idaho_pick4_history.csv
+```
+
+CSV Format:
+
+```csv
+Date,Draw,Num1,Num2,Num3,Num4
+2026-01-01,Night,1,2,3,4
+```
+
+## Generate Exact Order Predictions
+
+```bash
+python pick4_mlx_number_select_model.py \
+    --csv idaho_pick4_history.csv \
     --draw Night \
-    --ticket-type any \
+    --number-select exact \
+    --ticket-type model \
     --tickets 10
+```
+
+## Generate Any Order Predictions
+
+```bash
+python pick4_mlx_number_select_model.py \
+    --csv idaho_pick4_history.csv \
+    --draw Night \
+    --number-select any \
+    --ticket-type balanced \
+    --tickets 10
+```
+
+## Generate Day Draw Predictions
+
+```bash
+python pick4_mlx_number_select_model.py \
+    --csv idaho_pick4_history.csv \
+    --draw Day \
+    --number-select exact \
+    --tickets 10
+```
+
+## Generate Both Day and Night Predictions
+
+```bash
+python pick4_mlx_number_select_model.py \
+    --csv idaho_pick4_history.csv \
+    --draw both \
+    --number-select exact \
+    --tickets 10
+```
+
+### Ticket Types
+
+```text
+model
+balanced
+hot
+overdue
+hot_overdue
+```
+
+### Number Selection Types
+
+```text
+exact
+any
+boxed
+```
+
+## Export Predictions
+
+```bash
+python pick4_mlx_number_select_model.py \
+    --draw Night \
+    --number-select exact \
+    --tickets 20 \
+    --output pick4_predictions.csv
 ```
 
 ---
@@ -166,14 +246,6 @@ python idaho_cash_mlx_ticket_model.py \
     --tickets 10
 ```
 
-## Hot + Overdue
-
-```bash
-python idaho_cash_mlx_ticket_model.py \
-    --ticket-type hot_overdue \
-    --tickets 10
-```
-
 ---
 
 # Lotto America
@@ -190,12 +262,6 @@ Output:
 lotto_america_history.csv
 ```
 
-CSV format:
-
-```csv
-Date,Num1,Num2,Num3,Num4,Num5,StarBall
-```
-
 ## Generate Balanced Tickets
 
 ```bash
@@ -205,36 +271,12 @@ python lotto_america_mlx_ticket_model.py \
     --tickets 10
 ```
 
-## Hot Numbers
-
-```bash
-python lotto_america_mlx_ticket_model.py \
-    --ticket-type hot \
-    --tickets 10
-```
-
-## Overdue Numbers
-
-```bash
-python lotto_america_mlx_ticket_model.py \
-    --ticket-type overdue \
-    --tickets 10
-```
-
 ## Hot + Overdue
 
 ```bash
 python lotto_america_mlx_ticket_model.py \
     --ticket-type hot_overdue \
     --tickets 10
-```
-
-## Export Predictions
-
-```bash
-python lotto_america_mlx_ticket_model.py \
-    --tickets 20 \
-    --output lotto_america_predictions.csv
 ```
 
 ---
@@ -253,7 +295,7 @@ Output:
 millionaire_life_history.csv
 ```
 
-CSV format:
+CSV Format:
 
 ```csv
 Date,Num1,Num2,Num3,Num4,Num5,Extra,WinningNumbers
@@ -281,14 +323,6 @@ python millionaire_life_mlx_ticket_model.py \
 ```bash
 python millionaire_life_mlx_ticket_model.py \
     --ticket-type overdue \
-    --tickets 10
-```
-
-## Hot + Overdue
-
-```bash
-python millionaire_life_mlx_ticket_model.py \
-    --ticket-type hot_overdue \
     --tickets 10
 ```
 
@@ -327,7 +361,7 @@ GET /pick3
 GET /pick3/download
 ```
 
-Examples:
+Example:
 
 ```text
 http://127.0.0.1:8000/pick3
@@ -340,12 +374,18 @@ http://127.0.0.1:8000/pick3/download
 
 ```bash
 python scrape_idaho_pick3.py
+python scrape_idaho_pick4.py
 python scrape_idaho_cash.py
 python scrape_lotto_america.py
 python scrape_millionaire_life.py
 
 python pick3_mlx_ticket_model.py \
     --draw Night \
+    --tickets 10
+
+python pick4_mlx_number_select_model.py \
+    --draw Night \
+    --number-select exact \
     --tickets 10
 
 python idaho_cash_mlx_ticket_model.py \
@@ -368,6 +408,7 @@ python millionaire_life_mlx_ticket_model.py \
 | Game                 | Conservative | Balanced      | Aggressive  |
 | -------------------- | ------------ | ------------- | ----------- |
 | Pick 3               | Any Order    | Exact         | Exact Top 5 |
+| Pick 4               | Any Order    | Exact         | Model       |
 | Idaho Cash           | Balanced     | Hot + Overdue | Model       |
 | Lotto America        | Balanced     | Hot + Overdue | Model       |
 | Millionaire for Life | Balanced     | Hot + Overdue | Model       |
