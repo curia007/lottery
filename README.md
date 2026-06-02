@@ -225,7 +225,7 @@ idaho_cash_history.csv
 
 ```bash
 python idaho_cash_mlx_ticket_model.py \
-    --csv idaho_cash_history.csv \
+    --csv data/idaho_cash_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -266,7 +266,7 @@ lotto_america_history.csv
 
 ```bash
 python lotto_america_mlx_ticket_model.py \
-    --csv lotto_america_history.csv \
+    --csv data/lotto_america_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -305,7 +305,7 @@ Date,Num1,Num2,Num3,Num4,Num5,Extra,WinningNumbers
 
 ```bash
 python millionaire_life_mlx_ticket_model.py \
-    --csv millionaire_life_history.csv \
+    --csv data/millionaire_life_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -339,7 +339,7 @@ python millionaire_life_mlx_ticket_model.py \
 ```bash
 python millionaire_life_mlx_ticket_model.py \
     --tickets 20 \
-    --output millionaire_life_predictions.csv
+    --output data/millionaire_life_predictions.csv
 ```
 
 ---
