@@ -12,7 +12,7 @@ Features include:
 * Ranked ticket generation
 * Hot number analysis
 * Overdue number analysis
-* Exact and Any Order ticket support
+* Exact, Any Order, 3-way, and 6-way ticket support
 * REST API services
 * Automated scheduling support
 
@@ -103,6 +103,36 @@ python pick3_mlx_ticket_model.py \
     --tickets 10
 ```
 
+## Generate Any-Order Predictions
+
+```bash
+python pick3_mlx_ticket_model.py \
+    --csv idaho_pick3_history.csv \
+    --draw both \
+    --ticket-type any \
+    --tickets 10
+```
+
+## Generate 6-Way Predictions
+
+```bash
+python pick3_mlx_ticket_model.py \
+    --csv idaho_pick3_history.csv \
+    --draw both \
+    --ticket-type 6-way \
+    --tickets 10
+```
+
+## Generate 3-Way Predictions
+
+```bash
+python pick3_mlx_ticket_model.py \
+    --csv idaho_pick3_history.csv \
+    --draw both \
+    --ticket-type 3-way \
+    --tickets 10
+```
+
 ## Generate Day Draw Predictions
 
 ```bash
@@ -111,6 +141,18 @@ python pick3_mlx_ticket_model.py \
     --draw Day \
     --tickets 10
 ```
+
+### Ticket Types
+
+```text
+exact
+any
+6-way
+3-way
+straight_any
+```
+
+`6-way` is the any-order play for three distinct digits. `3-way` is the any-order play for one pair and one single digit.
 
 ---
 
@@ -380,6 +422,7 @@ python scrape_lotto_america.py
 python scrape_millionaire_life.py
 
 python pick3_mlx_ticket_model.py \
+    --csv data/idaho_pick3_history.csv \
     --draw Night \
     --tickets 10
 
@@ -407,7 +450,7 @@ python millionaire_life_mlx_ticket_model.py \
 
 | Game                 | Conservative | Balanced      | Aggressive  |
 | -------------------- | ------------ | ------------- | ----------- |
-| Pick 3               | Any Order    | Exact         | Exact Top 5 |
+| Pick 3               | 6-Way        | 3-Way         | Exact       |
 | Pick 4               | Any Order    | Exact         | Model       |
 | Idaho Cash           | Balanced     | Hot + Overdue | Model       |
 | Lotto America        | Balanced     | Hot + Overdue | Model       |

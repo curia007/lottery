@@ -23,6 +23,10 @@ Examples:
 
     python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw Day --tickets 10 --ticket-type any
 
+    python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw Day --tickets 10 --ticket-type 6-way
+
+    python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw Day --tickets 10 --ticket-type 3-way
+
     python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw Night --tickets 5 --ticket-type exact --exclude-recent 30
 
     python pick3_mlx_ticket_model.py --csv idaho_pick3_history.csv --draw both --tickets 5
@@ -36,6 +40,7 @@ import itertools
 import math
 import random
 from dataclasses import dataclass
+from collections import Counter
 from pathlib import Path
 from typing import Iterable, Literal
 
@@ -55,7 +60,7 @@ except ImportError as exc:
 
 
 DrawType = Literal["Day", "Night"]
-TicketType = Literal["exact", "any", "straight_any"]
+TicketType = Literal["exact", "any", "straight_any", "6-way", "3-way"]
 
 
 @dataclass
@@ -269,9 +274,29 @@ def ticket_to_str(ticket: Iterable[int]) -> str:
     return "".join(str(int(x)) for x in ticket)
 
 
+def canonical_ticket_str(ticket: Iterable[int]) -> str:
+    return "".join(str(int(x)) for x in sorted(int(x) for x in ticket))
+
+
+def ticket_shape(ticket: Iterable[int]) -> tuple[int, ...]:
+    counts = Counter(int(x) for x in ticket)
+    return tuple(sorted(counts.values(), reverse=True))
+
+
+def ticket_matches_type(ticket: tuple[int, int, int], ticket_type: str) -> bool:
+    shape = ticket_shape(ticket)
+    if ticket_type in {"exact", "any", "straight_any"}:
+        return True
+    if ticket_type == "6-way":
+        return shape == (1, 1, 1)
+    if ticket_type == "3-way":
+        return shape == (2, 1)
+    return False
+
+
 def combo_key(ticket: tuple[int, int, int], ticket_type: str) -> str:
-    if ticket_type == "any":
-        return "".join(sorted(ticket_to_str(ticket)))
+    if ticket_type in {"any", "6-way", "3-way"}:
+        return canonical_ticket_str(ticket)
     return ticket_to_str(ticket)
 
 
@@ -323,7 +348,11 @@ def recent_ticket_keys(digits: np.ndarray, recent_count: int, ticket_type: str) 
     if recent_count <= 0:
         return set()
     recent = digits[-recent_count:]
-    return {combo_key(tuple(map(int, row)), ticket_type) for row in recent}
+    return {
+        combo_key(tuple(map(int, row)), ticket_type)
+        for row in recent
+        if ticket_matches_type(tuple(map(int, row)), ticket_type)
+    }
 
 
 def rank_tickets(
@@ -349,20 +378,23 @@ def rank_tickets(
 
     for raw_ticket in all_tickets:
         ticket = tuple(map(int, raw_ticket))
+        if not ticket_matches_type(ticket, ticket_type):
+            continue
+
         key = combo_key(ticket, ticket_type)
 
         if key in excluded:
             continue
 
-        if ticket_type == "any":
-            # Deduplicate permutations, e.g. 123, 132, 213 are one Any ticket group.
+        if ticket_type in {"any", "6-way", "3-way"}:
+            # Deduplicate permutations within the play type, e.g. 123, 132, 213.
             if key in seen_keys:
                 continue
             seen_keys.add(key)
 
             permutations = set(itertools.permutations(ticket, 3))
             model_score = max(exact_model_score(p, probs) for p in permutations)
-            display_ticket = key
+            display_ticket = canonical_ticket_str(ticket)
         else:
             model_score = exact_model_score(ticket, probs)
             display_ticket = ticket_to_str(ticket)
@@ -531,10 +563,12 @@ def main() -> None:
 
     parser.add_argument(
         "--ticket-type",
-        choices=["exact", "any", "straight_any"],
+        choices=["exact", "any", "straight_any", "6-way", "3-way"],
         default="exact",
         help=(
             "Ticket style. exact = exact order. any = deduplicated any-order groups. "
+            "6-way = any-order groups with three distinct digits. "
+            "3-way = any-order groups with one pair. "
             "straight_any = exact-order ranking but labeled for Straight/Any play."
         ),
     )
