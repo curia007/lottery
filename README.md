@@ -22,6 +22,7 @@ Supported Games:
 * Idaho Pick 4
 * Idaho Cash
 * Lotto America
+* Mega Millions
 * Millionaire for Life
 
 ---
@@ -34,6 +35,7 @@ Supported Games:
 ├── scrape_idaho_pick4.py
 ├── scrape_idaho_cash.py
 ├── scrape_lotto_america.py
+├── scrape_mega_millions.py
 ├── scrape_millionaire_life.py
 │
 ├── pick3_mlx_ticket_model.py
@@ -48,6 +50,7 @@ Supported Games:
 ├── idaho_pick4_history.csv
 ├── idaho_cash_history.csv
 ├── lotto_america_history.csv
+├── mega_millions_history.csv
 ├── millionaire_life_history.csv
 │
 ├── README.md
@@ -360,6 +363,28 @@ python lotto_america_mlx_ticket_model.py \
 ```
 
 Use `--star-top` to control how many Star Ball predictions are shown per mode.
+
+---
+
+# Mega Millions
+
+## Scrape History
+
+```bash
+python data/scrape_mega_millions.py
+```
+
+Output:
+
+```text
+data/mega_millions_history.csv
+```
+
+CSV Format:
+
+```csv
+Date,Num1,Num2,Num3,Num4,Num5,MegaBall
+```
 
 ---
 
