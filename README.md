@@ -301,7 +301,7 @@ python scrape_lotto_america.py
 Output:
 
 ```text
-lotto_america_history.csv
+data/lotto_america_history.csv
 ```
 
 ## Generate Balanced Tickets
@@ -309,6 +309,7 @@ lotto_america_history.csv
 ```bash
 python lotto_america_mlx_ticket_model.py \
     --ticket-type balanced \
+    --star-mode balanced \
     --tickets 10
 ```
 
@@ -317,8 +318,48 @@ python lotto_america_mlx_ticket_model.py \
 ```bash
 python lotto_america_mlx_ticket_model.py \
     --ticket-type hot_overdue \
+    --star-mode overdue \
     --tickets 10
 ```
+
+## Star Ball Predictions
+
+The Lotto America model also prints Star Ball predictions in four modes:
+hot, balanced, mix, and low hit.
+
+```bash
+python lotto_america_mlx_ticket_model.py \
+    --star-hit-window 50 \
+    --star-top 5
+```
+
+## Star Ball Modes
+
+```bash
+python lotto_america_mlx_ticket_model.py \
+    --star-mode default
+
+python lotto_america_mlx_ticket_model.py \
+    --star-mode balanced
+
+python lotto_america_mlx_ticket_model.py \
+    --star-mode overdue
+
+python lotto_america_mlx_ticket_model.py \
+    --star-mode less_hits
+```
+
+## Star Ball Hits Window
+
+Use `--star-hit-window` to count how many times each Star Ball was drawn from the most recent N draws. Use `0` to include the full history.
+
+```bash
+python lotto_america_mlx_ticket_model.py \
+    --star-hit-window 50 \
+    --star-mode less_hits
+```
+
+Use `--star-top` to control how many Star Ball predictions are shown per mode.
 
 ---
 
@@ -436,6 +477,7 @@ python idaho_cash_mlx_ticket_model.py \
 
 python lotto_america_mlx_ticket_model.py \
     --ticket-type balanced \
+    --star-mode balanced \
     --tickets 10
 
 python millionaire_life_mlx_ticket_model.py \

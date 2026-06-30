@@ -69,6 +69,8 @@ STAR_MAX = 10
 MAIN_COUNT = 5
 
 TicketType = Literal["model", "balanced", "hot", "overdue", "hot_overdue"]
+StarMode = Literal["default", "balanced", "overdue", "less_hits"]
+StarPredictionMode = Literal["hot", "balanced", "mix", "low_hit"]
 
 DEFAULT_CSV = "data/lotto_america_history.csv"
 DEFAULT_TICKETS = 5
@@ -79,6 +81,9 @@ DEFAULT_LEARNING_RATE = 0.004
 DEFAULT_EXCLUDE_RECENT = 0
 DEFAULT_POOL_SIZE = 28
 DEFAULT_STAR_POOL_SIZE = 5
+DEFAULT_STAR_HIT_WINDOW = 0
+DEFAULT_STAR_TOP = 5
+DEFAULT_STAR_MODE: StarMode = "default"
 DEFAULT_SEED = 42
 
 
@@ -96,6 +101,17 @@ class RankedTicket:
     balance_score: float
     star_score: float
     ticket_type: str
+
+
+@dataclass
+class RankedStarPrediction:
+    rank: int
+    star_ball: int
+    mode: str
+    score: float
+    model_score: float
+    frequency_score: float
+    overdue_score: float
 
 
 class LottoAmericaModel(nn.Module):
@@ -497,6 +513,13 @@ def frequency_scores_main(main_numbers: np.ndarray) -> dict[int, float]:
 
 
 def frequency_scores_star(stars: np.ndarray) -> dict[int, float]:
+    return frequency_scores_star_window(stars, recent_count=0)
+
+
+def frequency_scores_star_window(stars: np.ndarray, recent_count: int) -> dict[int, float]:
+    if recent_count > 0:
+        stars = stars[-recent_count:]
+
     counts = np.zeros(STAR_MAX, dtype=np.float64)
     for s in stars:
         counts[int(s) - 1] += 1.0
@@ -517,6 +540,13 @@ def overdue_scores_main(main_numbers: np.ndarray) -> dict[int, float]:
 
 
 def overdue_scores_star(stars: np.ndarray) -> dict[int, float]:
+    return overdue_scores_star_window(stars, recent_count=0)
+
+
+def overdue_scores_star_window(stars: np.ndarray, recent_count: int) -> dict[int, float]:
+    if recent_count > 0:
+        stars = stars[-recent_count:]
+
     raw = {}
     for s in range(1, STAR_MAX + 1):
         positions = np.where(stars == s)[0]
@@ -643,11 +673,18 @@ def candidate_stars(
     star_overdue: dict[int, float],
     count: int,
     ticket_type: TicketType,
+    star_mode: StarMode,
 ) -> list[int]:
     base = []
 
     for s in range(1, STAR_MAX + 1):
-        if ticket_type == "hot":
+        if star_mode == "balanced":
+            score = 0.40 * star_probs[s - 1] + 0.30 * star_freq[s] + 0.30 * star_overdue[s]
+        elif star_mode == "overdue":
+            score = 0.70 * star_probs[s - 1] + 0.15 * star_freq[s] + 0.15 * star_overdue[s]
+        elif star_mode == "less_hits":
+            score = 0.30 * star_probs[s - 1] + 0.10 * star_freq[s] + 0.60 * star_overdue[s]
+        elif ticket_type == "hot":
             score = 0.35 * star_probs[s - 1] + 0.55 * star_freq[s] + 0.10 * star_overdue[s]
         elif ticket_type == "overdue":
             score = 0.35 * star_probs[s - 1] + 0.10 * star_freq[s] + 0.55 * star_overdue[s]
@@ -663,22 +700,74 @@ def candidate_stars(
     return [s for s, _ in base[:count]]
 
 
+def star_prediction_score(
+    mode: StarPredictionMode,
+    star_prob: float,
+    star_freq: float,
+    star_overdue: float,
+) -> float:
+    if mode == "hot":
+        return 0.20 * star_prob + 0.60 * star_freq + 0.20 * star_overdue
+    if mode == "balanced":
+        return 0.40 * star_prob + 0.30 * star_freq + 0.30 * star_overdue
+    if mode == "mix":
+        return 0.45 * star_prob + 0.25 * star_freq + 0.30 * star_overdue
+    return 0.15 * star_prob + 0.10 * star_freq + 0.75 * star_overdue
+
+
+def rank_star_predictions(
+    star_probs: np.ndarray,
+    stars: np.ndarray,
+    star_hit_window: int,
+    top_n: int,
+) -> dict[StarPredictionMode, list[RankedStarPrediction]]:
+    star_freq = frequency_scores_star_window(stars, star_hit_window)
+    star_overdue = overdue_scores_star_window(stars, star_hit_window)
+
+    ranked: dict[StarPredictionMode, list[RankedStarPrediction]] = {}
+
+    for mode in ("hot", "balanced", "mix", "low_hit"):
+        candidates: list[RankedStarPrediction] = []
+        for s in range(1, STAR_MAX + 1):
+            score = star_prediction_score(mode, star_probs[s - 1], star_freq[s], star_overdue[s])
+            candidates.append(
+                RankedStarPrediction(
+                    rank=0,
+                    star_ball=s,
+                    mode=mode,
+                    score=float(score),
+                    model_score=float(star_probs[s - 1]),
+                    frequency_score=float(star_freq[s]),
+                    overdue_score=float(star_overdue[s]),
+                )
+            )
+
+        candidates.sort(key=lambda x: x.score, reverse=True)
+        for idx, item in enumerate(candidates[:top_n], start=1):
+            item.rank = idx
+        ranked[mode] = candidates[:top_n]
+
+    return ranked
+
+
 def rank_tickets(
     main_probs: np.ndarray,
     star_probs: np.ndarray,
     main_numbers: np.ndarray,
     stars: np.ndarray,
     ticket_type: TicketType,
+    star_mode: StarMode,
     tickets: int,
     exclude_recent: int,
     pool_size: int,
     star_pool_size: int,
+    star_hit_window: int,
     custom_weights: tuple[float, float, float, float, float, float] | None,
 ) -> list[RankedTicket]:
     freq = frequency_scores_main(main_numbers)
     overdue = overdue_scores_main(main_numbers)
-    star_freq = frequency_scores_star(stars)
-    star_overdue = overdue_scores_star(stars)
+    star_freq = frequency_scores_star_window(stars, star_hit_window)
+    star_overdue = overdue_scores_star_window(stars, star_hit_window)
     pairs = pair_scores(main_numbers)
     excluded = recent_ticket_keys(main_numbers, stars, exclude_recent)
 
@@ -698,6 +787,7 @@ def rank_tickets(
         star_overdue=star_overdue,
         count=star_pool_size,
         ticket_type=ticket_type,
+        star_mode=star_mode,
     )
 
     ranked: list[RankedTicket] = []
@@ -826,16 +916,48 @@ def print_ranked(rows: list[RankedTicket]) -> None:
     print("Reminder: this ranks historical-pattern candidates; lottery results are random.")
 
 
+def print_star_predictions(rows_by_mode: dict[StarPredictionMode, list[RankedStarPrediction]]) -> None:
+    print()
+    print("Ranked Lotto America Star Ball predictions")
+    print("-" * 76)
+
+    for mode, rows in rows_by_mode.items():
+        label = {
+            "hot": "Hot",
+            "balanced": "Balanced",
+            "mix": "Mix",
+            "low_hit": "Low Hit",
+        }[mode]
+
+        print(f"{label}")
+        print(f"{'Rank':<6}{'Star':<8}{'Score':<14}{'Model':<14}{'Freq':<14}{'Overdue':<14}")
+
+        for r in rows:
+            print(
+                f"{r.rank:<6}"
+                f"{r.star_ball:<8}"
+                f"{r.score:<14.8f}"
+                f"{r.model_score:<14.8f}"
+                f"{r.frequency_score:<14.8f}"
+                f"{r.overdue_score:<14.8f}"
+            )
+
+        print("-" * 76)
+
+
 def main(
     csv: str = DEFAULT_CSV,
     tickets: int = DEFAULT_TICKETS,
     ticket_type: TicketType = DEFAULT_TICKET_TYPE,
+    star_mode: StarMode = DEFAULT_STAR_MODE,
     window: int = DEFAULT_WINDOW,
     epochs: int = DEFAULT_EPOCHS,
     learning_rate: float = DEFAULT_LEARNING_RATE,
     exclude_recent: int = DEFAULT_EXCLUDE_RECENT,
     pool_size: int = DEFAULT_POOL_SIZE,
     star_pool_size: int = DEFAULT_STAR_POOL_SIZE,
+    star_hit_window: int = DEFAULT_STAR_HIT_WINDOW,
+    star_top: int = DEFAULT_STAR_TOP,
     weights: tuple[float, float, float, float, float, float] | None = None,
     seed: int = DEFAULT_SEED,
     output: str | None = None,
@@ -848,6 +970,9 @@ def main(
 
     if star_pool_size < 1:
         raise SystemExit("--star-pool-size must be at least 1.")
+
+    if star_top < 1:
+        raise SystemExit("--star-top must be at least 1.")
 
     df = load_lotto_america_csv(csv)
     mains = main_rows(df)
@@ -878,14 +1003,25 @@ def main(
         main_numbers=mains,
         stars=stars,
         ticket_type=ticket_type,
+        star_mode=star_mode,
         tickets=tickets,
         exclude_recent=exclude_recent,
         pool_size=pool_size,
         star_pool_size=star_pool_size,
+        star_hit_window=star_hit_window,
         custom_weights=weights,
     )
 
     print_ranked(ranked)
+
+    star_rows_ranked = rank_star_predictions(
+        star_probs=star_probs,
+        stars=stars,
+        star_hit_window=star_hit_window,
+        top_n=star_top,
+    )
+
+    print_star_predictions(star_rows_ranked)
 
     if output:
         save_ranked_csv(output, ranked)
@@ -917,6 +1053,16 @@ def parse_args() -> argparse.Namespace:
         choices=["model", "balanced", "hot", "overdue", "hot_overdue"],
         default=DEFAULT_TICKET_TYPE,
         help="Ticket style: model, balanced, hot, overdue, hot_overdue. Default: balanced",
+    )
+
+    parser.add_argument(
+        "--star-mode",
+        choices=["default", "balanced", "overdue", "less_hits"],
+        default=DEFAULT_STAR_MODE,
+        help=(
+            "Star Ball strategy: default uses ticket-type scoring, balanced blends evenly, "
+            "overdue favors model output, less_hits favors overdue stars. Default: default"
+        ),
     )
 
     parser.add_argument(
@@ -962,6 +1108,23 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_STAR_POOL_SIZE,
         help="How many top Star Ball candidates to combine with main tickets. Default: 5",
+    )
+
+    parser.add_argument(
+        "--star-hit-window",
+        type=int,
+        default=DEFAULT_STAR_HIT_WINDOW,
+        help=(
+            "Use only the most recent N draws when counting Star Ball hits and overdue scores. "
+            "Default: 0 (all draws)."
+        ),
+    )
+
+    parser.add_argument(
+        "--star-top",
+        type=int,
+        default=DEFAULT_STAR_TOP,
+        help="Number of Star Ball predictions to show per mode. Default: 5",
     )
 
     parser.add_argument(
