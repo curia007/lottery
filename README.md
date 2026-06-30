@@ -42,6 +42,7 @@ Supported Games:
 ├── pick4_mlx_number_select_model.py
 ├── idaho_cash_mlx_ticket_model.py
 ├── lotto_america_mlx_ticket_model.py
+├── mega_millions_mlx_ticket_model.py
 ├── millionaire_life_mlx_ticket_model.py
 │
 ├── pick3_csv_web_service.py
@@ -384,6 +385,39 @@ CSV Format:
 
 ```csv
 Date,Num1,Num2,Num3,Num4,Num5,MegaBall
+```
+
+## Generate Balanced Tickets
+
+```bash
+python mega_millions/mega_millions_mlx_ticket_model.py \
+    --ticket-type balanced \
+    --tickets 10
+```
+
+## Hot Numbers
+
+```bash
+python mega_millions/mega_millions_mlx_ticket_model.py \
+    --ticket-type hot \
+    --tickets 10
+```
+
+## Overdue Numbers
+
+```bash
+python mega_millions/mega_millions_mlx_ticket_model.py \
+    --ticket-type overdue \
+    --tickets 10
+```
+
+## Export Predictions
+
+```bash
+python mega_millions/mega_millions_mlx_ticket_model.py \
+    --ticket-type balanced \
+    --tickets 10 \
+    --output data/mega_millions_predictions.csv
 ```
 
 ---
