@@ -70,6 +70,17 @@ MAIN_COUNT = 5
 
 TicketType = Literal["model", "balanced", "hot", "overdue", "hot_overdue"]
 
+DEFAULT_CSV = "data/lotto_america_history.csv"
+DEFAULT_TICKETS = 5
+DEFAULT_TICKET_TYPE: TicketType = "balanced"
+DEFAULT_WINDOW = 45
+DEFAULT_EPOCHS = 350
+DEFAULT_LEARNING_RATE = 0.004
+DEFAULT_EXCLUDE_RECENT = 0
+DEFAULT_POOL_SIZE = 28
+DEFAULT_STAR_POOL_SIZE = 5
+DEFAULT_SEED = 42
+
 
 @dataclass
 class RankedTicket:
@@ -815,14 +826,80 @@ def print_ranked(rows: list[RankedTicket]) -> None:
     print("Reminder: this ranks historical-pattern candidates; lottery results are random.")
 
 
-def main() -> None:
+def main(
+    csv: str = DEFAULT_CSV,
+    tickets: int = DEFAULT_TICKETS,
+    ticket_type: TicketType = DEFAULT_TICKET_TYPE,
+    window: int = DEFAULT_WINDOW,
+    epochs: int = DEFAULT_EPOCHS,
+    learning_rate: float = DEFAULT_LEARNING_RATE,
+    exclude_recent: int = DEFAULT_EXCLUDE_RECENT,
+    pool_size: int = DEFAULT_POOL_SIZE,
+    star_pool_size: int = DEFAULT_STAR_POOL_SIZE,
+    weights: tuple[float, float, float, float, float, float] | None = None,
+    seed: int = DEFAULT_SEED,
+    output: str | None = None,
+) -> None:
+    if tickets < 1:
+        raise SystemExit("--tickets / --top must be at least 1.")
+
+    if pool_size < MAIN_COUNT:
+        raise SystemExit(f"--pool-size must be at least {MAIN_COUNT}.")
+
+    if star_pool_size < 1:
+        raise SystemExit("--star-pool-size must be at least 1.")
+
+    df = load_lotto_america_csv(csv)
+    mains = main_rows(df)
+    stars = star_rows(df)
+
+    window = min(window, max(5, len(mains) // 3))
+    x_train, y_main_train, y_star_train = make_features_and_labels(
+        main_numbers=mains,
+        stars=stars,
+        window=window,
+    )
+
+    model = train_model(
+        x_train=x_train,
+        y_main_train=y_main_train,
+        y_star_train=y_star_train,
+        epochs=epochs,
+        learning_rate=learning_rate,
+        seed=seed,
+    )
+
+    next_feature = build_next_feature(mains, stars, window=window)
+    main_probs, star_probs = model_probabilities(model, next_feature)
+
+    ranked = rank_tickets(
+        main_probs=main_probs,
+        star_probs=star_probs,
+        main_numbers=mains,
+        stars=stars,
+        ticket_type=ticket_type,
+        tickets=tickets,
+        exclude_recent=exclude_recent,
+        pool_size=pool_size,
+        star_pool_size=star_pool_size,
+        custom_weights=weights,
+    )
+
+    print_ranked(ranked)
+
+    if output:
+        save_ranked_csv(output, ranked)
+        print(f"\nSaved ranked tickets to: {output}")
+
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Train an MLX Lotto America model and produce ranked ticket candidates."
     )
 
     parser.add_argument(
         "--csv",
-        default="lotto_america_history.csv",
+        default=DEFAULT_CSV,
         help="CSV output from scrape_lotto_america.py. Default: lotto_america_history.csv",
     )
 
@@ -831,49 +908,49 @@ def main() -> None:
         "--top",
         dest="tickets",
         type=int,
-        default=5,
+        default=DEFAULT_TICKETS,
         help="Number of ranked tickets to return. Default: 5",
     )
 
     parser.add_argument(
         "--ticket-type",
         choices=["model", "balanced", "hot", "overdue", "hot_overdue"],
-        default="balanced",
+        default=DEFAULT_TICKET_TYPE,
         help="Ticket style: model, balanced, hot, overdue, hot_overdue. Default: balanced",
     )
 
     parser.add_argument(
         "--window",
         type=int,
-        default=45,
+        default=DEFAULT_WINDOW,
         help="Number of past rows used as model context. Default: 45",
     )
 
     parser.add_argument(
         "--epochs",
         type=int,
-        default=350,
+        default=DEFAULT_EPOCHS,
         help="Training epochs. Default: 350",
     )
 
     parser.add_argument(
         "--learning-rate",
         type=float,
-        default=0.004,
+        default=DEFAULT_LEARNING_RATE,
         help="MLX Adam learning rate. Default: 0.004",
     )
 
     parser.add_argument(
         "--exclude-recent",
         type=int,
-        default=0,
+        default=DEFAULT_EXCLUDE_RECENT,
         help="Exclude tickets that exactly appeared in the last N draws. Default: 0",
     )
 
     parser.add_argument(
         "--pool-size",
         type=int,
-        default=28,
+        default=DEFAULT_POOL_SIZE,
         help=(
             "How many top candidate main numbers to combine into tickets. "
             "Higher is broader but slower. Default: 28"
@@ -883,7 +960,7 @@ def main() -> None:
     parser.add_argument(
         "--star-pool-size",
         type=int,
-        default=5,
+        default=DEFAULT_STAR_POOL_SIZE,
         help="How many top Star Ball candidates to combine with main tickets. Default: 5",
     )
 
@@ -900,7 +977,7 @@ def main() -> None:
     parser.add_argument(
         "--seed",
         type=int,
-        default=42,
+        default=DEFAULT_SEED,
         help="Random seed for reproducible training. Default: 42",
     )
 
@@ -909,59 +986,9 @@ def main() -> None:
         help="Optional CSV file to save ranked output.",
     )
 
-    args = parser.parse_args()
-
-    if args.tickets < 1:
-        raise SystemExit("--tickets / --top must be at least 1.")
-
-    if args.pool_size < MAIN_COUNT:
-        raise SystemExit(f"--pool-size must be at least {MAIN_COUNT}.")
-
-    if args.star_pool_size < 1:
-        raise SystemExit("--star-pool-size must be at least 1.")
-
-    df = load_lotto_america_csv(args.csv)
-    mains = main_rows(df)
-    stars = star_rows(df)
-
-    window = min(args.window, max(5, len(mains) // 3))
-    x_train, y_main_train, y_star_train = make_features_and_labels(
-        main_numbers=mains,
-        stars=stars,
-        window=window,
-    )
-
-    model = train_model(
-        x_train=x_train,
-        y_main_train=y_main_train,
-        y_star_train=y_star_train,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        seed=args.seed,
-    )
-
-    next_feature = build_next_feature(mains, stars, window=window)
-    main_probs, star_probs = model_probabilities(model, next_feature)
-
-    ranked = rank_tickets(
-        main_probs=main_probs,
-        star_probs=star_probs,
-        main_numbers=mains,
-        stars=stars,
-        ticket_type=args.ticket_type,
-        tickets=args.tickets,
-        exclude_recent=args.exclude_recent,
-        pool_size=args.pool_size,
-        star_pool_size=args.star_pool_size,
-        custom_weights=args.weights,
-    )
-
-    print_ranked(ranked)
-
-    if args.output:
-        save_ranked_csv(args.output, ranked)
-        print(f"\nSaved ranked tickets to: {args.output}")
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(**vars(args))

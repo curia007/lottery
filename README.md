@@ -308,7 +308,6 @@ lotto_america_history.csv
 
 ```bash
 python lotto_america_mlx_ticket_model.py \
-    --csv data/lotto_america_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
