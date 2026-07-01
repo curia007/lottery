@@ -547,7 +547,7 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="idaho_cash_history.csv",
+        default="data/idaho_cash_history.csv",
         help="CSV output from scrape_idaho_cash.py. Default: idaho_cash_history.csv",
     )
 
