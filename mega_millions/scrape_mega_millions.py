@@ -37,7 +37,7 @@ DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / "data" / "mega_millions_h
 MAIN_MIN = 1
 MAIN_MAX = 70
 MEGA_MIN = 1
-MEGA_MAX = 25
+MEGA_MAX = 24
 
 
 def fetch_html(url: str) -> str:
@@ -115,7 +115,7 @@ def valid_mega_numbers(nums: Iterable[int]) -> list[int]:
 
 def make_row(date: str, nums: list[int]) -> dict[str, int | str] | None:
     """
-    Mega Millions uses 5 main numbers from 1-70 and 1 Mega Ball from 1-25.
+    Mega Millions uses 5 main numbers from 1-70 and 1 Mega Ball from 1-24.
     """
     if len(nums) < 6:
         return None

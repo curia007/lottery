@@ -57,7 +57,7 @@ except ImportError as exc:
 MAIN_MIN = 1
 MAIN_MAX = 70
 MEGA_MIN = 1
-MEGA_MAX = 25
+MEGA_MAX = 24
 MAIN_COUNT = 5
 
 TicketType = Literal["model", "balanced", "hot", "overdue", "hot_overdue"]
@@ -88,13 +88,11 @@ class RankedTicket:
     balance_score: float
     mega_score: float
     ticket_type: str
-
-
 class MegaMillionsModel(nn.Module):
     """
     Small neural network that predicts:
       - 70 main-number logits, one for each main number 1-70
-      - 25 Mega Ball logits, one for each Mega Ball number 1-25
+      - 24 Mega Ball logits, one for each Mega Ball number 1-24
     """
 
     def __init__(self, input_dim: int, hidden_dim: int = 160):
@@ -235,9 +233,13 @@ def load_mega_millions_csv(csv_path: str | Path) -> pd.DataFrame:
             raise ValueError(f"Column {col} contains values outside {MAIN_MIN}-{MAIN_MAX}.")
 
     df["MegaBall"] = df["MegaBall"].astype(int)
-    bad_mega = ~df["MegaBall"].between(MEGA_MIN, MEGA_MAX)
-    if bad_mega.any():
-        raise ValueError(f"MegaBall contains values outside {MEGA_MIN}-{MEGA_MAX}.")
+    df = df[df["MegaBall"].between(MEGA_MIN, MEGA_MAX)].reset_index(drop=True)
+
+    if len(df) < 25:
+        raise ValueError(
+            f"Need at least 25 rows after filtering MegaBall values outside {MEGA_MIN}-{MEGA_MAX}. "
+            f"Found {len(df)}."
+        )
 
     df = df.sort_values("Date").reset_index(drop=True)
 
@@ -287,7 +289,7 @@ def make_features_and_labels(
 
     Labels:
       - Main numbers as 70-way multi-hot.
-      - Mega Ball as 25-way one-hot.
+      - Mega Ball as 24-way one-hot.
     """
     xs: list[np.ndarray] = []
     y_main: list[np.ndarray] = []
@@ -645,6 +647,60 @@ def candidate_mega_balls(
     return [m for m, _ in base[:count]]
 
 
+def weighted_choices(values: list[int], weights: dict[int, float], rng: random.Random, count: int) -> list[int]:
+    if count <= 0:
+        return []
+
+    available = list(values)
+    selected: list[int] = []
+
+    while available and len(selected) < count:
+        current_weights = [max(weights.get(v, 0.0), 0.0) for v in available]
+
+        if sum(current_weights) <= 0:
+            chosen = rng.choice(available)
+        else:
+            chosen = rng.choices(available, weights=current_weights, k=1)[0]
+
+        selected.append(chosen)
+        available.remove(chosen)
+
+    return selected
+
+
+def sampled_ticket_combinations(
+    pool: list[int],
+    pool_weights: dict[int, float],
+    mega_pool: list[int],
+    mega_weights: dict[int, float],
+    tickets: int,
+    rng: random.Random,
+) -> list[tuple[tuple[int, ...], int]]:
+    seen: set[tuple[tuple[int, ...], int]] = set()
+    combinations: list[tuple[tuple[int, ...], int]] = []
+    max_attempts = max(100, tickets * 50)
+    attempts = 0
+
+    while len(combinations) < tickets and attempts < max_attempts:
+        attempts += 1
+        main_ticket = tuple(sorted(weighted_choices(pool, pool_weights, rng, MAIN_COUNT)))
+        if len(main_ticket) != MAIN_COUNT:
+            continue
+
+        mega_ball_choices = weighted_choices(mega_pool, mega_weights, rng, 1)
+        if not mega_ball_choices:
+            continue
+
+        combo = (main_ticket, int(mega_ball_choices[0]))
+        if combo in seen:
+            continue
+
+        seen.add(combo)
+        combinations.append(combo)
+
+    return combinations
+
+
 def rank_tickets(
     main_probs: np.ndarray,
     mega_probs: np.ndarray,
@@ -656,6 +712,7 @@ def rank_tickets(
     pool_size: int,
     mega_pool_size: int,
     custom_weights: tuple[float, float, float, float, float, float] | None,
+    seed: int,
 ) -> list[RankedTicket]:
     freq = frequency_scores_main(main_numbers)
     overdue = overdue_scores_main(main_numbers)
@@ -682,9 +739,21 @@ def rank_tickets(
         ticket_type=ticket_type,
     )
 
+    pool_weights = {n: float(main_probs[n - 1] + freq[n] + overdue[n]) for n in pool}
+    mega_weights = {m: float(mega_probs[m - 1] + mega_freq[m] + mega_overdue[m]) for m in mega_pool}
+    rng = random.Random(seed)
+    sampled_combos = sampled_ticket_combinations(
+        pool=pool,
+        pool_weights=pool_weights,
+        mega_pool=mega_pool,
+        mega_weights=mega_weights,
+        tickets=tickets,
+        rng=rng,
+    )
+
     ranked: list[RankedTicket] = []
 
-    for main_ticket in itertools.combinations(sorted(pool), MAIN_COUNT):
+    for main_ticket, mega_ball in sampled_combos:
         main_key = tuple(sorted(main_ticket))
 
         model_score = float(np.mean([main_probs[n - 1] for n in main_ticket]))
@@ -696,42 +765,41 @@ def rank_tickets(
 
         bal_score = balance_score(main_ticket)
 
-        for mega_ball in mega_pool:
-            ticket_key = (main_key, int(mega_ball))
-            if ticket_key in excluded:
-                continue
+        ticket_key = (main_key, int(mega_ball))
+        if ticket_key in excluded:
+            continue
 
-            mega_score = float(
-                0.60 * mega_probs[mega_ball - 1]
-                + 0.20 * mega_freq[mega_ball]
-                + 0.20 * mega_overdue[mega_ball]
-            )
+        mega_score = float(
+            0.60 * mega_probs[mega_ball - 1]
+            + 0.20 * mega_freq[mega_ball]
+            + 0.20 * mega_overdue[mega_ball]
+        )
 
-            score = (
-                model_w * model_score
-                + freq_w * frequency_score
-                + overdue_w * overdue_score
-                + pair_w * pair_score
-                + balance_w * bal_score
-                + mega_w * mega_score
-            )
+        score = (
+            model_w * model_score
+            + freq_w * frequency_score
+            + overdue_w * overdue_score
+            + pair_w * pair_score
+            + balance_w * bal_score
+            + mega_w * mega_score
+        )
 
-            ranked.append(
-                RankedTicket(
-                    rank=0,
-                    ticket=full_ticket_to_str(main_ticket, mega_ball),
-                    main_numbers=main_ticket_to_str(main_ticket),
-                    mega_ball=int(mega_ball),
-                    score=score,
-                    model_score=model_score,
-                    frequency_score=frequency_score,
-                    overdue_score=overdue_score,
-                    pair_score=pair_score,
-                    balance_score=bal_score,
-                    mega_score=mega_score,
-                    ticket_type=ticket_type,
-                )
+        ranked.append(
+            RankedTicket(
+                rank=0,
+                ticket=full_ticket_to_str(main_ticket, mega_ball),
+                main_numbers=main_ticket_to_str(main_ticket),
+                mega_ball=int(mega_ball),
+                score=score,
+                model_score=model_score,
+                frequency_score=frequency_score,
+                overdue_score=overdue_score,
+                pair_score=pair_score,
+                balance_score=bal_score,
+                mega_score=mega_score,
+                ticket_type=ticket_type,
             )
+        )
 
     ranked.sort(key=lambda x: x.score, reverse=True)
 
@@ -947,6 +1015,7 @@ def main() -> None:
         pool_size=args.pool_size,
         mega_pool_size=args.mega_pool_size,
         custom_weights=args.weights,
+        seed=args.seed,
     )
 
     print_ranked(ranked)
