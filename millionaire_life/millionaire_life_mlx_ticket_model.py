@@ -877,7 +877,7 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="millionaire_life_history.csv",
+        default="data/millionaire_life_history.csv",
         help="CSV output from scrape_millionaire_life.py. Default: millionaire_life_history.csv",
     )
 
