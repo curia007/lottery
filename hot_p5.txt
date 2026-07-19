@@ -1,9 +1,0 @@
-
-Ranked Millionaire for Life ticket candidates
-------------------------------------------------------------------------------------------------------------
-Rank  Type          Ticket                              Score         Model         Overdue       
-------------------------------------------------------------------------------------------------------------
-1     hot           01 05 27 31 32                      0.15820009    0.30885047    0.33652695    
-------------------------------------------------------------------------------------------------------------
-Detected game range: main 1-58, 5 main numbers, no extra number modeled
-Reminder: this ranks historical-pattern candidates; lottery results are random.
