@@ -697,6 +697,8 @@ def candidate_extras(
             score = 0.35 * p + 0.10 * freq[e] + 0.55 * overdue[e]
         elif ticket_type == "hot_overdue":
             score = 0.40 * p + 0.30 * freq[e] + 0.30 * overdue[e]
+        elif ticket_type == "balanced":
+            score = 0.55 * p + 0.20 * freq[e] + 0.25 * overdue[e]
         else:
             score = 0.60 * p + 0.20 * freq[e] + 0.20 * overdue[e]
 
