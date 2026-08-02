@@ -17,7 +17,7 @@ except ImportError:
     print("Error: MLX not found. Please install with 'pip install mlx'")
     exit(1)
 
-DEFAULT_CSV = "millionaire_life/data/millionaire_life_history.csv"
+DEFAULT_CSV = "data/millionaire_life_history.csv"
 DEFAULT_WINDOW = 20
 DEFAULT_EPOCHS = 100
 DEFAULT_LEARNING_RATE = 0.01
