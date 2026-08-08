@@ -139,7 +139,9 @@ def load_pick3_csv(csv_path: str | Path, draw: str) -> pd.DataFrame:
 
     df = df.sort_values("Date").reset_index(drop=True)
 
-    if draw.lower() != "both":
+    if draw.lower() == "combo":
+        df = df[df["Draw"].isin(["Day", "Night"])].reset_index(drop=True)
+    elif draw.lower() != "both":
         draw_name = normalize_draw(draw)
         df = df[df["Draw"] == draw_name].reset_index(drop=True)
 
@@ -547,9 +549,9 @@ def main() -> None:
 
     parser.add_argument(
         "--draw",
-        choices=["Day", "Night", "both"],
-        default="Night",
-        help="Draw type to train against. Use 'both' to generate separate Day and Night picks.",
+        choices=["Day", "Night", "both", "combo"],
+        default="combo",
+        help="Draw type to train against. Use 'both' to generate separate Day and Night picks. Use 'combo' for both.",
     )
 
     parser.add_argument(
@@ -628,7 +630,12 @@ def main() -> None:
     if args.tickets < 1:
         raise SystemExit("--tickets / --top must be at least 1.")
 
-    draws = ["Day", "Night"] if args.draw == "both" else [args.draw]
+    if args.draw == "both":
+        draws = ["Day", "Night"]
+    elif args.draw == "combo":
+        draws = ["combo"]
+    else:
+        draws = [args.draw]
 
     all_ranked: list[RankedTicket] = []
 

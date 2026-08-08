@@ -157,7 +157,9 @@ def load_pick4_csv(csv_path: str | Path, draw: str) -> pd.DataFrame:
 
     df = df.sort_values("Date").reset_index(drop=True)
 
-    if draw.lower() != "both":
+    if draw.lower() == "combo":
+        df = df[df["Draw"].isin(["Day", "Night"])].reset_index(drop=True)
+    elif draw.lower() != "both":
         draw_name = normalize_draw(draw)
         df = df[df["Draw"] == draw_name].reset_index(drop=True)
 
@@ -606,15 +608,15 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="idaho_pick4_history.csv",
+        default="data/idaho_pick4_history.csv",
         help="CSV output from scrape_idaho_pick4.py. Default: idaho_pick4_history.csv",
     )
 
     parser.add_argument(
         "--draw",
-        choices=["Day", "Night", "both"],
-        default="Night",
-        help="Draw type to train against. Use 'both' to generate separate Day and Night picks.",
+        choices=["Day", "Night", "both", "combo"],
+        default="combok",
+        help="Draw type to train against. Use 'both' to generate separate Day and Night picks. Use 'combo' for both.",
     )
 
     parser.add_argument(
@@ -629,14 +631,14 @@ def main() -> None:
     parser.add_argument(
         "--ticket-type",
         choices=["model", "balanced", "hot", "overdue", "hot_overdue"],
-        default="balanced",
+        default="hot",
         help="Scoring strategy: model, balanced, hot, overdue, hot_overdue.",
     )
 
     parser.add_argument(
         "--number-select",
         choices=["exact", "any", "boxed"],
-        default="exact",
+        default="any",
         help="Number selection type: exact, any, boxed. boxed is an alias for any-order grouping.",
     )
 
@@ -695,7 +697,12 @@ def main() -> None:
     if args.tickets < 1:
         raise SystemExit("--tickets / --top must be at least 1.")
 
-    draws = ["Day", "Night"] if args.draw == "both" else [args.draw]
+    if args.draw == "both":
+        draws = ["Day", "Night"]
+    elif args.draw == "combo":
+        draws = ["combo"]
+    else:
+        draws = [args.draw]
 
     all_ranked: list[RankedTicket] = []
 

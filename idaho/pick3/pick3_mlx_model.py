@@ -10,8 +10,8 @@ Default input file:
 
 Examples:
     python pick3_mlx_model.py
-    python pick3_mlx_model.py --csv idaho_pick3_history.csv --draw Night
-    python pick3_mlx_model.py --csv idaho_pick3_history.csv --epochs 300 --window 30
+    python pick3_mlx_model.py --csv data/idaho_pick3_history.csv --draw Night
+    python pick3_mlx_model.py --csv data/idaho_pick3_history.csv --epochs 300 --window 30
 
 Important:
     Lottery drawings are random. This script creates a statistical/ML-style
@@ -40,7 +40,7 @@ except ImportError as exc:
         "MLX is designed primarily for Apple silicon Macs."
     ) from exc
 
-DEFAULT_CSV = "idaho_pick3_history.csv"
+DEFAULT_CSV = "data/idaho_pick3_history.csv"
 
 
 @dataclass(frozen=True)
