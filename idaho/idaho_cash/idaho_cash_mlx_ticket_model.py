@@ -261,6 +261,24 @@ def model_number_probabilities(model: IdahoCashModel, next_feature: np.ndarray) 
 
 
 def frequency_scores(numbers: np.ndarray) -> dict[int, float]:
+    # Try to load from number_counts.csv if it exists
+    counts_file = Path(__file__).parent / "data" / "number_counts.csv"
+    if counts_file.exists():
+        try:
+            df_counts = pd.read_csv(counts_file)
+            # number_counts.csv columns: Number, Count
+            # We want to normalize these counts for scoring
+            counts_dict = dict(zip(df_counts["Number"], df_counts["Count"]))
+            
+            # Map to 1-45 range
+            all_counts = np.array([float(counts_dict.get(n, 0)) for n in range(1, 46)])
+            all_counts += 1.0  # Laplace smoothing
+            all_counts /= all_counts.sum()
+            
+            return {n: float(all_counts[n - 1]) for n in range(1, 46)}
+        except Exception as e:
+            print(f"Warning: Could not read number_counts.csv: {e}. Falling back to historical data.")
+
     counts = np.zeros(45, dtype=np.float64)
     for n in numbers.flatten():
         counts[int(n) - 1] += 1.0
@@ -566,7 +584,7 @@ def main() -> None:
         default="balanced",
         help=(
             "Ticket style: model, balanced, hot, overdue, hot_overdue. "
-            "Default: balanced"
+            "Default: model"
         ),
     )
 

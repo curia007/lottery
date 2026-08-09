@@ -31,31 +31,41 @@ Supported Games:
 
 ```text
 .
-├── scrape_idaho_pick3.py
-├── scrape_idaho_pick4.py
-├── scrape_idaho_cash.py
-├── scrape_lotto_america.py
-├── scrape_mega_millions.py
-├── scrape_millionaire_life.py
-│
-├── pick3_mlx_ticket_model.py
-├── pick4_mlx_number_select_model.py
-├── idaho_cash_mlx_ticket_model.py
-├── lotto_america_mlx_ticket_model.py
-├── mega_millions_mlx_ticket_model.py
-├── millionaire_life_mlx_ticket_model.py
-│
-├── pick3_csv_web_service.py
-│
-├── idaho_pick3_history.csv
-├── idaho_pick4_history.csv
-├── idaho_cash_history.csv
-├── lotto_america_history.csv
-├── mega_millions_history.csv
-├── millionaire_life_history.csv
-│
-├── README.md
-└── requirements.txt
+├── idaho/
+│   ├── pick3/
+│   │   ├── scrape_idaho_pick3.py
+│   │   ├── pick3_mlx_ticket_model.py
+│   │   ├── pick3_csv_web_service.py
+│   │   └── data/
+│   │       └── idaho_pick3_history.csv
+│   ├── pick4/
+│   │   ├── scrape_idaho_pick4.py
+│   │   ├── pick4_mlx_number_select_model.py
+│   │   └── data/
+│   │       └── idaho_pick4_history.csv
+│   └── idaho_cash/
+│       ├── scrape_idaho_cash.py
+│       ├── idaho_cash_mlx_ticket_model.py
+│       └── data/
+│           └── idaho_cash_history.csv
+├── lotto_america/
+│   ├── scrape_lotto_america.py
+│   ├── lotto_america_mlx_ticket_model.py
+│   └── data/
+│       └── lotto_america_history.csv
+├── mega_millions/
+│   ├── scrape_mega_millions.py
+│   ├── mega_millions_mlx_ticket_model.py
+│   └── data/
+│       └── mega_millions_history.csv
+├── millionaire_life/
+│   ├── scrape_millionaire_life.py
+│   ├── millionaire_life_mlx_ticket_model.py
+│   └── data/
+│       └── millionaire_life_history.csv
+├── main.py
+├── LICENSE
+└── README.md
 ```
 
 ---
@@ -89,20 +99,20 @@ pip install mlx
 ## Scrape History
 
 ```bash
-python scrape_idaho_pick3.py
+python idaho/pick3/scrape_idaho_pick3.py
 ```
 
 Output:
 
 ```text
-idaho_pick3_history.csv
+idaho/pick3/data/idaho_pick3_history.csv
 ```
 
 ## Generate Night Draw Predictions
 
 ```bash
-python pick3_mlx_ticket_model.py \
-    --csv idaho_pick3_history.csv \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw Night \
     --tickets 10
 ```
@@ -110,8 +120,8 @@ python pick3_mlx_ticket_model.py \
 ## Generate Any-Order Predictions
 
 ```bash
-python pick3_mlx_ticket_model.py \
-    --csv idaho_pick3_history.csv \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw both \
     --ticket-type any \
     --tickets 10
@@ -120,8 +130,8 @@ python pick3_mlx_ticket_model.py \
 ## Generate 6-Way Predictions
 
 ```bash
-python pick3_mlx_ticket_model.py \
-    --csv idaho_pick3_history.csv \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw both \
     --ticket-type 6-way \
     --tickets 10
@@ -130,8 +140,8 @@ python pick3_mlx_ticket_model.py \
 ## Generate 3-Way Predictions
 
 ```bash
-python pick3_mlx_ticket_model.py \
-    --csv idaho_pick3_history.csv \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw both \
     --ticket-type 3-way \
     --tickets 10
@@ -140,11 +150,29 @@ python pick3_mlx_ticket_model.py \
 ## Generate Day Draw Predictions
 
 ```bash
-python pick3_mlx_ticket_model.py \
-    --csv idaho_pick3_history.csv \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw Day \
     --tickets 10
 ```
+
+## Combined Draw Training
+
+Train on both Day and Night history combined for the next draw:
+
+```bash
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
+    --draw combo \
+    --tickets 10
+```
+
+### Advanced Options
+
+* `--exclude-recent N`: Exclude tickets that appeared in the last N draws.
+* `--weights model,freq,overdue,pair`: Set custom weights for scoring (e.g., `0.5,0.2,0.2,0.1`).
+* `--seed N`: Set a random seed for reproducible training.
+* `--output FILE`: Save ranked results to a CSV file.
 
 ### Ticket Types
 
@@ -156,7 +184,7 @@ any
 straight_any
 ```
 
-`6-way` is the any-order play for three distinct digits. `3-way` is the any-order play for one pair and one single digit.
+`6-way` is the any-order play for three distinct digits. `3-way` is the any-order play for one pair and one single digit. `straight_any` provides exact-order ranking but labeled for Straight/Any play.
 
 ---
 
@@ -165,13 +193,13 @@ straight_any
 ## Scrape History
 
 ```bash
-python scrape_idaho_pick4.py
+python idaho/pick4/scrape_idaho_pick4.py
 ```
 
 Output:
 
 ```text
-idaho_pick4_history.csv
+idaho/pick4/data/idaho_pick4_history.csv
 ```
 
 CSV Format:
@@ -184,8 +212,8 @@ Date,Draw,Num1,Num2,Num3,Num4
 ## Generate Exact Order Predictions
 
 ```bash
-python pick4_mlx_number_select_model.py \
-    --csv idaho_pick4_history.csv \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw Night \
     --number-select exact \
     --ticket-type model \
@@ -195,8 +223,8 @@ python pick4_mlx_number_select_model.py \
 ## Generate Any Order Predictions
 
 ```bash
-python pick4_mlx_number_select_model.py \
-    --csv idaho_pick4_history.csv \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw Night \
     --number-select any \
     --ticket-type balanced \
@@ -206,8 +234,8 @@ python pick4_mlx_number_select_model.py \
 ## Generate Day Draw Predictions
 
 ```bash
-python pick4_mlx_number_select_model.py \
-    --csv idaho_pick4_history.csv \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw Day \
     --number-select exact \
     --tickets 10
@@ -216,8 +244,8 @@ python pick4_mlx_number_select_model.py \
 ## Generate Both Day and Night Predictions
 
 ```bash
-python pick4_mlx_number_select_model.py \
-    --csv idaho_pick4_history.csv \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw both \
     --number-select exact \
     --tickets 10
@@ -244,11 +272,12 @@ boxed
 ## Export Predictions
 
 ```bash
-python pick4_mlx_number_select_model.py \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw Night \
     --number-select exact \
     --tickets 20 \
-    --output pick4_predictions.csv
+    --output idaho/pick4/data/pick4_predictions.csv
 ```
 
 ---
@@ -258,20 +287,20 @@ python pick4_mlx_number_select_model.py \
 ## Scrape History
 
 ```bash
-python scrape_idaho_cash.py
+python idaho/idaho_cash/scrape_idaho_cash.py
 ```
 
 Output:
 
 ```text
-idaho_cash_history.csv
+idaho/idaho_cash/data/idaho_cash_history.csv
 ```
 
 ## Generate Balanced Tickets
 
 ```bash
-python idaho_cash_mlx_ticket_model.py \
-    --csv data/idaho_cash_history.csv \
+python idaho/idaho_cash/idaho_cash_mlx_ticket_model.py \
+    --csv idaho/idaho_cash/data/idaho_cash_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -279,7 +308,8 @@ python idaho_cash_mlx_ticket_model.py \
 ## Hot Numbers
 
 ```bash
-python idaho_cash_mlx_ticket_model.py \
+python idaho/idaho_cash/idaho_cash_mlx_ticket_model.py \
+    --csv idaho/idaho_cash/data/idaho_cash_history.csv \
     --ticket-type hot \
     --tickets 10
 ```
@@ -287,7 +317,8 @@ python idaho_cash_mlx_ticket_model.py \
 ## Overdue Numbers
 
 ```bash
-python idaho_cash_mlx_ticket_model.py \
+python idaho/idaho_cash/idaho_cash_mlx_ticket_model.py \
+    --csv idaho/idaho_cash/data/idaho_cash_history.csv \
     --ticket-type overdue \
     --tickets 10
 ```
@@ -299,19 +330,20 @@ python idaho_cash_mlx_ticket_model.py \
 ## Scrape History
 
 ```bash
-python scrape_lotto_america.py
+python lotto_america/scrape_lotto_america.py
 ```
 
 Output:
 
 ```text
-data/lotto_america_history.csv
+lotto_america/data/lotto_america_history.csv
 ```
 
 ## Generate Balanced Tickets
 
 ```bash
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
+    --csv lotto_america/data/lotto_america_history.csv \
     --ticket-type balanced \
     --star-mode balanced \
     --tickets 10
@@ -320,7 +352,8 @@ python lotto_america_mlx_ticket_model.py \
 ## Hot + Overdue
 
 ```bash
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
+    --csv lotto_america/data/lotto_america_history.csv \
     --ticket-type hot_overdue \
     --star-mode overdue \
     --tickets 10
@@ -332,7 +365,8 @@ The Lotto America model also prints Star Ball predictions in four modes:
 hot, balanced, mix, and low hit.
 
 ```bash
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
+    --csv lotto_america/data/lotto_america_history.csv \
     --star-hit-window 50 \
     --star-top 5
 ```
@@ -340,16 +374,16 @@ python lotto_america_mlx_ticket_model.py \
 ## Star Ball Modes
 
 ```bash
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
     --star-mode default
 
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
     --star-mode balanced
 
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
     --star-mode overdue
 
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
     --star-mode less_hits
 ```
 
@@ -358,7 +392,8 @@ python lotto_america_mlx_ticket_model.py \
 Use `--star-hit-window` to count how many times each Star Ball was drawn from the most recent N draws. Use `0` to include the full history.
 
 ```bash
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
+    --csv lotto_america/data/lotto_america_history.csv \
     --star-hit-window 50 \
     --star-mode less_hits
 ```
@@ -372,13 +407,13 @@ Use `--star-top` to control how many Star Ball predictions are shown per mode.
 ## Scrape History
 
 ```bash
-python data/scrape_mega_millions.py
+python mega_millions/scrape_mega_millions.py
 ```
 
 Output:
 
 ```text
-data/mega_millions_history.csv
+mega_millions/data/mega_millions_history.csv
 ```
 
 CSV Format:
@@ -391,6 +426,7 @@ Date,Num1,Num2,Num3,Num4,Num5,MegaBall
 
 ```bash
 python mega_millions/mega_millions_mlx_ticket_model.py \
+    --csv mega_millions/data/mega_millions_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -399,6 +435,7 @@ python mega_millions/mega_millions_mlx_ticket_model.py \
 
 ```bash
 python mega_millions/mega_millions_mlx_ticket_model.py \
+    --csv mega_millions/data/mega_millions_history.csv \
     --ticket-type hot \
     --tickets 10
 ```
@@ -407,6 +444,7 @@ python mega_millions/mega_millions_mlx_ticket_model.py \
 
 ```bash
 python mega_millions/mega_millions_mlx_ticket_model.py \
+    --csv mega_millions/data/mega_millions_history.csv \
     --ticket-type overdue \
     --tickets 10
 ```
@@ -415,9 +453,10 @@ python mega_millions/mega_millions_mlx_ticket_model.py \
 
 ```bash
 python mega_millions/mega_millions_mlx_ticket_model.py \
+    --csv mega_millions/data/mega_millions_history.csv \
     --ticket-type balanced \
     --tickets 10 \
-    --output data/mega_millions_predictions.csv
+    --output mega_millions/data/mega_millions_predictions.csv
 ```
 
 ---
@@ -427,13 +466,13 @@ python mega_millions/mega_millions_mlx_ticket_model.py \
 ## Scrape History
 
 ```bash
-python scrape_millionaire_life.py
+python millionaire_life/scrape_millionaire_life.py
 ```
 
 Output:
 
 ```text
-millionaire_life_history.csv
+millionaire_life/data/millionaire_life_history.csv
 ```
 
 CSV Format:
@@ -445,8 +484,8 @@ Date,Num1,Num2,Num3,Num4,Num5,Extra,WinningNumbers
 ## Generate Balanced Tickets
 
 ```bash
-python millionaire_life_mlx_ticket_model.py \
-    --csv data/millionaire_life_history.csv \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
@@ -454,7 +493,8 @@ python millionaire_life_mlx_ticket_model.py \
 ## Hot Numbers
 
 ```bash
-python millionaire_life_mlx_ticket_model.py \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --ticket-type hot \
     --tickets 10
 ```
@@ -462,7 +502,8 @@ python millionaire_life_mlx_ticket_model.py \
 ## Overdue Numbers
 
 ```bash
-python millionaire_life_mlx_ticket_model.py \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --ticket-type overdue \
     --tickets 10
 ```
@@ -470,7 +511,8 @@ python millionaire_life_mlx_ticket_model.py \
 ## Include Extra Number
 
 ```bash
-python millionaire_life_mlx_ticket_model.py \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --include-extra \
     --tickets 10
 ```
@@ -478,9 +520,10 @@ python millionaire_life_mlx_ticket_model.py \
 ## Export Predictions
 
 ```bash
-python millionaire_life_mlx_ticket_model.py \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --tickets 20 \
-    --output data/millionaire_life_predictions.csv
+    --output millionaire_life/data/millionaire_life_predictions.csv
 ```
 
 ---
@@ -492,7 +535,7 @@ python millionaire_life_mlx_ticket_model.py \
 Start server:
 
 ```bash
-uvicorn pick3_csv_web_service:app --reload
+uvicorn idaho.pick3.pick3_csv_web_service:app --reload
 ```
 
 Endpoints:
@@ -514,32 +557,36 @@ http://127.0.0.1:8000/pick3/download
 # Automated Daily Workflow
 
 ```bash
-python scrape_idaho_pick3.py
-python scrape_idaho_pick4.py
-python scrape_idaho_cash.py
-python scrape_lotto_america.py
-python scrape_millionaire_life.py
+python idaho/pick3/scrape_idaho_pick3.py
+python idaho/pick4/scrape_idaho_pick4.py
+python idaho/idaho_cash/scrape_idaho_cash.py
+python lotto_america/scrape_lotto_america.py
+python millionaire_life/scrape_millionaire_life.py
 
-python pick3_mlx_ticket_model.py \
-    --csv data/idaho_pick3_history.csv \
-    --draw Night \
+python idaho/pick3/pick3_mlx_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
+    --draw combo \
     --tickets 10
 
-python pick4_mlx_number_select_model.py \
+python idaho/pick4/pick4_mlx_number_select_model.py \
+    --csv idaho/pick4/data/idaho_pick4_history.csv \
     --draw Night \
     --number-select exact \
     --tickets 10
 
-python idaho_cash_mlx_ticket_model.py \
+python idaho/idaho_cash/idaho_cash_mlx_ticket_model.py \
+    --csv idaho/idaho_cash/data/idaho_cash_history.csv \
     --ticket-type balanced \
     --tickets 10
 
-python lotto_america_mlx_ticket_model.py \
+python lotto_america/lotto_america_mlx_ticket_model.py \
+    --csv lotto_america/data/lotto_america_history.csv \
     --ticket-type balanced \
     --star-mode balanced \
     --tickets 10
 
-python millionaire_life_mlx_ticket_model.py \
+python millionaire_life/millionaire_life_mlx_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
     --ticket-type balanced \
     --tickets 10
 ```
