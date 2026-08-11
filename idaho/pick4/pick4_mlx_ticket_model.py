@@ -555,14 +555,14 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="idaho_pick4_history.csv",
+        default="data/idaho_pick4_history.csv",
         help="CSV output from scrape_idaho_pick4.py. Default: idaho_pick4_history.csv",
     )
 
     parser.add_argument(
         "--draw",
         choices=["Day", "Night", "both"],
-        default="Night",
+        default="both",
         help="Draw type to train against. Use 'both' to generate separate Day and Night picks.",
     )
 
@@ -578,7 +578,7 @@ def main() -> None:
     parser.add_argument(
         "--ticket-type",
         choices=["exact", "any", "boxed", "balanced", "hot", "overdue", "hot_overdue"],
-        default="exact",
+        default="any",
         help=(
             "Ticket style. exact = exact order. any/boxed = deduplicated sorted groups. "
             "balanced/hot/overdue/hot_overdue adjust scoring weights."

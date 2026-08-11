@@ -295,7 +295,7 @@ def score_tickets(game_name, probs, stats_df, history, num_tickets):
 
 def main():
     parser = argparse.ArgumentParser(description="Predict next winning lottery tickets using MLX.")
-    parser.add_argument("--game", choices=list(GAMES.keys()), default="pick3", help="Lottery game to predict.")
+    parser.add_argument("--game", choices=list(GAMES.keys()), default="pick4", help="Lottery game to predict.")
     parser.add_argument("--tickets", type=int, default=5, help="Number of tickets to generate.")
     parser.add_argument("--epochs", type=int, default=200, help="Training epochs.")
     parser.add_argument("--window", type=int, default=20, help="Window size for features.")
