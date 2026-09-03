@@ -550,7 +550,7 @@ def main() -> None:
     parser.add_argument(
         "--draw",
         choices=["Day", "Night", "both", "combo"],
-        default="combo",
+        default="both",
         help="Draw type to train against. Use 'both' to generate separate Day and Night picks. Use 'combo' for both.",
     )
 
