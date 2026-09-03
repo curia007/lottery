@@ -2,7 +2,7 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description="Pick 3 MLX Model")
-    parser.add_argument("--csv", required=True, help="CSV file")
+    parser.add_argument("--csv", required=False, help="CSV file")
     parser.add_argument("--draw", choices=["Day", "Night"], default="Night")
     parser.add_argument("--top", type=int, default=1,
                         help="Number of ranked ticket predictions to return")
