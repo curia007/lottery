@@ -895,8 +895,8 @@ def main() -> None:
     parser.add_argument(
         "--ticket-type",
         choices=["model", "balanced", "hot", "overdue", "hot_overdue"],
-        default="balanced",
-        help="Ticket style: model, balanced, hot, overdue, hot_overdue. Default: balanced",
+        default="hot",
+        help="Ticket style: model, balanced, hot, overdue, hot_overdue. Default: overdue",
     )
 
     parser.add_argument(

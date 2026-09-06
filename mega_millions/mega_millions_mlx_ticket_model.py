@@ -64,7 +64,7 @@ TicketType = Literal["model", "balanced", "hot", "overdue", "hot_overdue"]
 
 DEFAULT_CSV = "data/mega_millions_history.csv"
 DEFAULT_TICKETS = 5
-DEFAULT_TICKET_TYPE: TicketType = "balanced"
+DEFAULT_TICKET_TYPE: TicketType = "hot"
 DEFAULT_WINDOW = 45
 DEFAULT_EPOCHS = 350
 DEFAULT_LEARNING_RATE = 0.004
