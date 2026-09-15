@@ -49,7 +49,7 @@ except ImportError as exc:
         "MLX is optimized for Apple Silicon Macs."
     ) from exc
 
-DrawType = Literal["Day", "Night", "Both"]
+DrawType = Literal["Day", "Night", "Both", "both", "Combo", "combo", "Combined", "combined"]
 TicketType = Literal["exact", "any", "straight_any", "6-way", "3-way"]
 
 DEFAULT_CSV_PATH = "idaho/pick3/data/idaho_pick3_history.csv"
@@ -356,6 +356,10 @@ def normalize_draw(value: str) -> str:
         return "Day"
     if text.startswith("night"):
         return "Night"
+    if text in ("combo", "comb", "combined"):
+        return "Combo"
+    if text in ("both", "all"):
+        return "Both"
     raise ValueError(f"Unknown draw type: {value!r}")
 
 
@@ -561,7 +565,17 @@ def calculate_ticket_probabilities(
 ) -> np.ndarray:
     """
     Computes exact joint probabilities P(d1, d2, d3 | prompt) for all 1,000 combinations (000 - 999).
+    If target_draw is 'Combo' / 'Combined', averages the conditional joint distribution of Day and Night draws.
     """
+    norm_target = normalize_draw(target_draw)
+    if norm_target in ("Combo", "Both"):
+        # Combine predictions by evaluating joint probabilities under both Day and Night draw conditions
+        probs_day = calculate_ticket_probabilities(model, df, "Day", tokenizer, history_window)
+        probs_night = calculate_ticket_probabilities(model, df, "Night", tokenizer, history_window)
+        combined_probs = 0.5 * probs_day + 0.5 * probs_night
+        comb_sum = np.sum(combined_probs)
+        return combined_probs / comb_sum if comb_sum > 0 else combined_probs
+
     recent_draws = df.tail(history_window)
     tokens = [tokenizer.bos_id]
     for _, row in recent_draws.iterrows():
@@ -569,7 +583,7 @@ def calculate_ticket_probabilities(
         tokens.append(tokenizer.sep_id)
 
     tokens.append(tokenizer.pred_id)
-    target_draw_tag = tokenizer.day_id if target_draw.strip().lower().startswith("day") else tokenizer.night_id
+    target_draw_tag = tokenizer.day_id if norm_target == "Day" else tokenizer.night_id
     tokens.append(target_draw_tag)
 
     prompt_len = len(tokens)
@@ -750,9 +764,9 @@ def main():
     parser.add_argument(
         "--draw",
         type=str,
-        choices=["Day", "Night", "both", "Both"],
-        default="Night",
-        help="Target draw type: 'Day', 'Night', or 'both' (default: Night)",
+        choices=["Day", "Night", "both", "Both", "combo", "Combo", "combined", "Combined"],
+        default="combo",
+        help="Target draw type: 'combo' (combine both night and day draws), 'Day', 'Night', or 'both' (default: combo)",
     )
     parser.add_argument(
         "--tickets",

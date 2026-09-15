@@ -41,6 +41,9 @@ class TestPick3LLM(unittest.TestCase):
     def test_normalize_draw(self):
         self.assertEqual(normalize_draw("day"), "Day")
         self.assertEqual(normalize_draw("NIGHT"), "Night")
+        self.assertEqual(normalize_draw("combo"), "Combo")
+        self.assertEqual(normalize_draw("combined"), "Combo")
+        self.assertEqual(normalize_draw("both"), "Both")
         with self.assertRaises(ValueError):
             normalize_draw("InvalidDraw")
 
@@ -131,6 +134,20 @@ class TestPick3LLM(unittest.TestCase):
         for t in tickets_6way:
             self.assertEqual(len(set(t.ticket)), 3)
 
+        # Test combined Day and Night draw predictions (combo)
+        tickets_combo = generate_pick3_winning_tickets(
+            model=trained_model,
+            df=df,
+            draw_type="combo",
+            num_tickets=4,
+            ticket_type="exact",
+            history_window=4,
+        )
+        self.assertEqual(len(tickets_combo), 4)
+        for t in tickets_combo:
+            self.assertEqual(len(t.ticket), 3)
+            self.assertEqual(t.draw, "Combo")
+
     def test_cli_execution(self):
         import subprocess
         import sys
@@ -155,6 +172,26 @@ class TestPick3LLM(unittest.TestCase):
             self.assertTrue(output_csv.exists())
             df_out = pd.read_csv(output_csv)
             self.assertEqual(len(df_out), 6)  # 3 Day + 3 Night
+
+            # Test combo draw CLI
+            output_combo_csv = Path(tmp_dir) / "preds_combo.csv"
+            cmd_combo = [
+                sys.executable,
+                "idaho/pick3/pick3_llm_ticket_model.py",
+                "--csv", "idaho/pick3/data/idaho_pick3_history.csv",
+                "--local-model-dir", str(model_dir),
+                "--draw", "combo",
+                "--tickets", "5",
+                "--epochs", "1",
+                "--batch-size", "64",
+                "--output", str(output_combo_csv),
+            ]
+            res_combo = subprocess.run(cmd_combo, capture_output=True, text=True)
+            self.assertEqual(res_combo.returncode, 0, f"Combo CLI failed: {res_combo.stderr}")
+            self.assertTrue(output_combo_csv.exists())
+            df_combo_out = pd.read_csv(output_combo_csv)
+            self.assertEqual(len(df_combo_out), 5)
+            self.assertTrue((df_combo_out["draw"] == "Combo").all())
 
 
 if __name__ == "__main__":
