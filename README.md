@@ -35,6 +35,7 @@ Supported Games:
 │   ├── pick3/
 │   │   ├── scrape_idaho_pick3.py
 │   │   ├── pick3_mlx_ticket_model.py
+│   │   ├── pick3_llm_ticket_model.py
 │   │   ├── pick3_csv_web_service.py
 │   │   └── data/
 │   │       └── idaho_pick3_history.csv
@@ -153,6 +154,25 @@ python idaho/pick3/pick3_mlx_ticket_model.py \
 python idaho/pick3/pick3_mlx_ticket_model.py \
     --csv idaho/pick3/data/idaho_pick3_history.csv \
     --draw Day \
+    --tickets 10
+```
+
+## Pick 3 Transformer LLM Model (Remote to Local & Fine-Tuning)
+
+Instantiate a Transformer Language Model from a remote Lotto model specification/URL, generate the local model, fine-tune it autoregressively on Pick 3 draw sequences, and produce the next winning ticket candidates:
+
+```bash
+# Fine-tune local LLM and generate Night winning tickets
+python idaho/pick3/pick3_llm_ticket_model.py \
+    --csv idaho/pick3/data/idaho_pick3_history.csv \
+    --draw Night \
+    --tickets 5 \
+    --epochs 8
+
+# Generate Any-Order / 6-way tickets using remote base model
+python idaho/pick3/pick3_llm_ticket_model.py \
+    --remote-model remote://lottery-ai/pick3-transformer-base \
+    --ticket-type any \
     --tickets 10
 ```
 
