@@ -509,6 +509,33 @@ CSV Format:
 Date,Num1,Num2,Num3,Num4,Num5,Extra,WinningNumbers
 ```
 
+## Millionaire for Life Transformer LLM Model (Remote to Local & Millionaire Ball Emphasis)
+
+Instantiate a Transformer Language Model from a remote Lotto model specification/URL, generate the local model, fine-tune it autoregressively on Millionaire for Life draw sequences, and produce the next winning ticket candidates with strong spotlight emphasis on the **Best Next Winning Millionaire Ball (Extra)**:
+
+```bash
+# Fine-tune local LLM, spotlight best Millionaire Ball, and generate winning tickets (default: model)
+python millionaire_life/millionaire_life_llm_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
+    --tickets 5 \
+    --epochs 10
+
+# Prioritize the top winning Millionaire Ball across generated tickets (mb_focused strategy)
+python millionaire_life/millionaire_life_llm_ticket_model.py \
+    --csv millionaire_life/data/millionaire_life_history.csv \
+    --ticket-type mb_focused \
+    --tickets 10 \
+    --epochs 10
+
+# Load from remote base model spec and export predictions to CSV
+python millionaire_life/millionaire_life_llm_ticket_model.py \
+    --remote-model remote://lottery-ai/millionaire-life-transformer-base \
+    --local-model-dir models/millionaire_life_llm_model \
+    --ticket-type balanced \
+    --tickets 10 \
+    --output millionaire_life/data/millionaire_life_predictions.csv
+```
+
 ## Generate Balanced Tickets
 
 ```bash
