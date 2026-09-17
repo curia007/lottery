@@ -17,7 +17,22 @@ except ImportError:
     print("Error: MLX not found. Please install with 'pip install mlx'")
     exit(1)
 
-DEFAULT_CSV = "data/millionaire_life_history.csv"
+def find_default_csv() -> Path:
+    candidates = [
+        Path(__file__).resolve().parent / "data" / "millionaire_life_history.csv",
+        Path(__file__).resolve().parent.parent / "millionaire_life" / "data" / "millionaire_life_history.csv",
+        Path("millionaire_life/data/millionaire_life_history.csv"),
+        Path("data/millionaire_life_history.csv"),
+        Path("../data/millionaire_life_history.csv"),
+        Path("../../data/millionaire_life_history.csv"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return candidates[0]
+
+
+DEFAULT_CSV = str(find_default_csv())
 DEFAULT_WINDOW = 20
 DEFAULT_EPOCHS = 100
 DEFAULT_LEARNING_RATE = 0.01

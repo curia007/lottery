@@ -39,7 +39,19 @@ from bs4 import BeautifulSoup
 
 
 URL = "https://www.idaholottery.com/drawgame/history/millionaire-life"
-DEFAULT_OUTPUT = "data/millionaire_life_history.csv"
+def find_default_output() -> Path:
+    candidates = [
+        Path(__file__).resolve().parent / "data" / "millionaire_life_history.csv",
+        Path("millionaire_life/data/millionaire_life_history.csv"),
+        Path("data/millionaire_life_history.csv"),
+    ]
+    for c in candidates:
+        if c.parent.exists():
+            return c
+    return candidates[0]
+
+
+DEFAULT_OUTPUT = str(find_default_output())
 
 
 def fetch_html(url: str) -> str:
@@ -230,6 +242,7 @@ def deduplicate_rows(rows: Iterable[dict[str, int | str | None]]) -> list[dict[s
 
 def write_csv(rows: list[dict[str, int | str | None]], output_file: str | Path) -> None:
     output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = ["Date", "Num1", "Num2", "Num3", "Num4", "Num5", "Extra", "WinningNumbers"]
 
     with output_path.open("w", newline="", encoding="utf-8") as f:

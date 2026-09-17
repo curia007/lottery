@@ -872,6 +872,22 @@ def print_ranked(rows: list[RankedTicket], config: GameConfig) -> None:
     print("Reminder: this ranks historical-pattern candidates; lottery results are random.")
 
 
+def find_default_csv() -> Path:
+    """Find the default history CSV file across standard project paths."""
+    candidates = [
+        Path(__file__).resolve().parent / "data" / "millionaire_life_history.csv",
+        Path(__file__).resolve().parent.parent / "millionaire_life" / "data" / "millionaire_life_history.csv",
+        Path("millionaire_life/data/millionaire_life_history.csv"),
+        Path("data/millionaire_life_history.csv"),
+        Path("../data/millionaire_life_history.csv"),
+        Path("../../data/millionaire_life_history.csv"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Train an MLX Millionaire for Life model and produce ranked ticket candidates."
@@ -879,8 +895,8 @@ def main() -> None:
 
     parser.add_argument(
         "--csv",
-        default="data/millionaire_life_history.csv",
-        help="CSV output from scrape_millionaire_life.py. Default: millionaire_life_history.csv",
+        default=str(find_default_csv()),
+        help=f"CSV output from scrape_millionaire_life.py. Default: {find_default_csv()}",
     )
 
     parser.add_argument(
