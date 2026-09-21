@@ -771,6 +771,8 @@ def generate_millionaire_life_winning_tickets(
 
     # Step 2: Compute main numbers probability distribution
     main_probs = calculate_main_number_probabilities(model, df, tokenizer, history_window)
+    main_probs = np.array(main_probs, dtype=np.float64)
+    main_probs = main_probs / np.sum(main_probs)
     main_candidates = np.arange(MAIN_MIN, MAIN_MAX + 1)
 
     # Step 3: Sample candidate 5-number combinations using LLM probability distribution
@@ -779,7 +781,8 @@ def generate_millionaire_life_winning_tickets(
 
     # Determine extra assignment strategy
     all_extras = [info.ball for info in mb_info_list]
-    extra_probs = [info.probability for info in mb_info_list]
+    extra_probs = np.array([info.probability for info in mb_info_list], dtype=np.float64)
+    extra_probs = extra_probs / np.sum(extra_probs)
 
     attempts = 0
     max_attempts = pool_size * 5
