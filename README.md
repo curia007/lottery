@@ -244,6 +244,16 @@ python idaho/pick3/pick3_llm_ticket_model.py \
     --output idaho/pick3/data/pick3_llm_predictions.csv
 ```
 
+### Pick 3 Sequence Analyzer (Gradio)
+
+Run the interactive sequence analyzer from the repository root:
+
+```bash
+python idaho/pick3/hugging_face/pick3_process.py
+```
+
+It loads the bundled local checkpoint from `idaho/pick3/models/pick3_llm_model/` or `models/pick3_llm_model/` without contacting Hugging Face. Set `PICK3_HF_MODEL` to override the model with a local checkpoint directory or a compatible Hugging Face model ID. For private Hub models, provide access with the `HF_TOKEN` environment variable. Excel reports are written to `idaho/pick3/hugging_face/generated/`. Launch uses `share=True`, so Gradio also prints a public `gradio.live` URL alongside the local server.
+
 ## 4. Consecutive Numbers & Statistical Analysis
 
 Analyze consecutive pattern repeats, slot-wise repeats, and generate `idaho/pick3/data/number_counts.csv`:
