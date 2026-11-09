@@ -12,6 +12,7 @@ from idaho.pick3.pick3_llm_ticket_model import (
     build_training_sequences,
     calculate_ticket_probabilities,
     compute_frequency_and_overdue_scores,
+    format_pick3_localized_response,
     generate_pick3_winning_tickets,
     load_pick3_history,
     matches_ticket_type,
@@ -147,6 +148,52 @@ class TestPick3LLM(unittest.TestCase):
         for t in tickets_combo:
             self.assertEqual(len(t.ticket), 3)
             self.assertEqual(t.draw, "Combo")
+
+    def test_localized_responses_formatting(self):
+        # Case 1: Standard 3 distinct digits
+        res = format_pick3_localized_response(
+            predicted_digits=[1, 2, 3],
+            alternative_tickets=["456", "789", "012"],
+            draw_type="Night",
+        )
+        self.assertEqual(res["primary"], "The next winning Pick 3 numbers are 1 2 3.")
+        self.assertEqual(res["primary_dash"], "The next winning Pick 3 numbers are 1-2-3.")
+        self.assertIn("4 5 6", res["alternatives"])
+        self.assertIn("6-way Box", res["box_permutations"])
+        self.assertIn("1-2-3", res["box_permutations"])
+        self.assertIn("Sequence sum is 6", res["profile"])
+        self.assertIn("The next winning Pick 3 numbers are 1 2 3.", res["narrative"])
+
+        # Case 2: Double digits (3-way box)
+        res_double = format_pick3_localized_response(
+            predicted_digits=[7, 7, 2],
+            draw_type="Day",
+        )
+        self.assertEqual(res_double["primary"], "The next winning Pick 3 numbers are 7 7 2.")
+        self.assertIn("3-way Box", res_double["box_permutations"])
+        self.assertIn("7-7-2", res_double["box_permutations"])
+
+        # Case 3: Triple digits (Straight only)
+        res_triple = format_pick3_localized_response(
+            predicted_digits=[5, 5, 5],
+            draw_type="Night",
+        )
+        self.assertEqual(res_triple["primary"], "The next winning Pick 3 numbers are 5 5 5.")
+        self.assertIn("Straight Only", res_triple["box_permutations"])
+
+        # Case 4: With probability matrix
+        prob_mat = np.zeros((3, 10))
+        prob_mat[0, 1] = 0.45
+        prob_mat[1, 2] = 0.52
+        prob_mat[2, 3] = 0.61
+        res_probs = format_pick3_localized_response(
+            predicted_digits=[1, 2, 3],
+            prob_matrix=prob_mat,
+            draw_type="Night",
+        )
+        self.assertIn("45.0%", res_probs["positional_summary"])
+        self.assertIn("52.0%", res_probs["positional_summary"])
+        self.assertIn("61.0%", res_probs["positional_summary"])
 
     def test_cli_execution(self):
         import subprocess

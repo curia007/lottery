@@ -259,16 +259,18 @@ def build_latest_feature(rows: Sequence[Pick3Row], window: int, preferred_draw: 
     return mx.array([features], dtype=mx.float32)
 
 
-def format_prediction(top: List[List[Tuple[int, float]]]) -> Tuple[str, List[str]]:
+def format_prediction(top: List[List[Tuple[int, float]]]) -> Tuple[str, List[str], str]:
     best_digits = [str(position[0][0]) for position in top]
     best_number = "".join(best_digits)
+    d_spaced = " ".join(best_digits)
+    localized_text = f"The next winning Pick 3 numbers are {d_spaced}."
 
     detail_lines = []
     for i, choices in enumerate(top, start=1):
         formatted = ", ".join(f"{digit} ({prob:.1%})" for digit, prob in choices)
         detail_lines.append(f"Position {i}: {formatted}")
 
-    return best_number, detail_lines
+    return best_number, detail_lines, localized_text
 
 
 def main() -> None:
@@ -307,11 +309,12 @@ def main() -> None:
     mx.eval(logits)
 
     top = top_digits(logits, top_k=args.top_k)
-    prediction, detail_lines = format_prediction(top)
+    prediction, detail_lines, localized_text = format_prediction(top)
 
     print("\n=== MLX Pick 3 Suggestion ===")
     if args.draw:
         print(f"Draw hint: {args.draw.capitalize()}")
+    print(f"Localized prediction: {localized_text}")
     print(f"Suggested next number: {prediction}")
     print("\nTop digit probabilities by position:")
     for line in detail_lines:

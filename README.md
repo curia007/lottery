@@ -33,7 +33,12 @@ Key capabilities include:
 .
 ├── idaho/
 │   ├── pick3/
-│   │   ├── scrape_idaho_pick3.py            # Historical draw scraper
+│   │   ├── scrape_idaho_pick3.py            # Historical draw scraper (CSV output)
+│   │   ├── scrape_idaho_pick3_jsonl.py      # Historical draw scraper (JSONL output)
+│   │   ├── train_pick_3.py                  # MLX sequence training pipeline & validation
+│   │   ├── evaluate_pick3_mlx.py            # MLX batch evaluation & accuracy metrics on JSONL
+│   │   ├── pick3_hf_model.py                # Hugging Face Hub & PyTorch/Transformers bridge
+│   │   ├── upload_to_hf_hub.py              # Checkpoint packaging & Hugging Face Hub uploader
 │   │   ├── pick3_mlx_ticket_model.py        # MLX ticket model (Exact, 6-way, 3-way, Combo)
 │   │   ├── pick3_llm_ticket_model.py        # Autoregressive Transformer LLM & fine-tuning
 │   │   ├── pick3_mlx_model.py               # MLX neural network probability model
@@ -44,6 +49,7 @@ Key capabilities include:
 │   │   ├── models/                          # Saved local Pick 3 LLM weights
 │   │   └── data/
 │   │       ├── idaho_pick3_history.csv
+│   │       ├── idaho_pick3_last_picks.jsonl
 │   │       └── number_counts.csv
 │   ├── pick4/
 │   │   ├── scrape_idaho_pick4.py            # Historical draw scraper
@@ -124,7 +130,7 @@ python --version
 ## Install Dependencies
 
 ```bash
-pip install pandas numpy requests beautifulsoup4 fastapi uvicorn safetensors apscheduler
+pip install pandas numpy requests beautifulsoup4 fastapi uvicorn safetensors apscheduler huggingface_hub "urllib3<2"
 ```
 
 ### Apple Silicon MLX
@@ -162,6 +168,12 @@ Scrape historical draws into `idaho/pick3/data/idaho_pick3_history.csv`:
 
 ```bash
 python idaho/pick3/scrape_idaho_pick3.py
+```
+
+Scrape historical draws into JSONL format `idaho/pick3/data/idaho_pick3_last_picks.jsonl`:
+
+```bash
+python idaho/pick3/scrape_idaho_pick3_jsonl.py
 ```
 
 ## 2. MLX Ticket Model
@@ -254,12 +266,102 @@ python idaho/pick3/hugging_face/pick3_process.py
 
 It loads the bundled local checkpoint from `idaho/pick3/models/pick3_llm_model/` or `models/pick3_llm_model/` without contacting Hugging Face. Set `PICK3_HF_MODEL` to override the model with a local checkpoint directory or a compatible Hugging Face model ID. For private Hub models, provide access with the `HF_TOKEN` environment variable. Excel reports are written to `idaho/pick3/hugging_face/generated/`. Launch uses `share=True`, so Gradio also prints a public `gradio.live` URL alongside the local server.
 
-## 4. Consecutive Numbers & Statistical Analysis
+## 4. MLX Training Pipeline (train_pick_3.py)
+
+Train or fine-tune an autoregressive Transformer model on historical Pick 3 draw sequences from JSONL (or CSV) using MLX on Apple Silicon:
+
+```bash
+# Train on historical JSONL dataset with default parameters
+python train_pick_3.py
+
+# Train with custom epochs, batch size, learning rate, and validation split
+python train_pick_3.py \
+    --jsonl idaho/pick3/data/idaho_pick3_last_picks.jsonl \
+    --model-dir models/pick3_llm_model \
+    --epochs 10 \
+    --batch-size 32 \
+    --lr 1e-3 \
+    --val-split 0.1 \
+    --history-json idaho/pick3/data/training_history.json
+
+# Train and generate top predicted tickets for next draw
+python train_pick_3.py \
+    --epochs 5 \
+    --predict \
+    --tickets 5 \
+    --draw Night \
+    --output-tickets idaho/pick3/data/pick3_train_predictions.csv
+```
+
+## 5. MLX Batch Sequence Evaluation on JSONL
+
+Evaluate cross-entropy loss, token prediction accuracy, and exact draw match rates across batches using `mlx.core` and historical JSONL data (`idaho_pick3_last_picks.jsonl`):
+
+```bash
+# Evaluate model across batches with default window and batch size
+python idaho/pick3/evaluate_pick3_mlx.py
+
+# Custom batch size, history window, and JSON metric export
+python idaho/pick3/evaluate_pick3_mlx.py \
+    --jsonl idaho/pick3/data/idaho_pick3_last_picks.jsonl \
+    --model-dir models/pick3_llm_model \
+    --window-size 10 \
+    --batch-size 64 \
+    --output-json idaho/pick3/data/eval_metrics.json
+```
+
+## 6. Consecutive Numbers & Statistical Analysis
 
 Analyze consecutive pattern repeats, slot-wise repeats, and generate `idaho/pick3/data/number_counts.csv`:
 
 ```bash
 python idaho/pick3/consective_numbers_mlx.py
+```
+
+## 7. Hugging Face Hub & PyTorch / Transformers Integration
+
+Load, save, export, and push Pick 3 lottery models directly to and from Hugging Face Hub with seamless interoperability across Apple MLX and PyTorch / Transformers:
+
+```bash
+# Upload local model checkpoint and assets to Hugging Face Hub
+python upload_to_hf_hub.py \
+    --model-dir models/pick3_llm_model \
+    --repo-id username/idaho-pick3-transformer
+
+# Push trained model checkpoint via pick3_hf_model
+python pick3_hf_model.py \
+    --model-dir models/pick3_llm_model \
+    --hf-repo username/idaho-pick3-transformer \
+    --push
+
+# Resolve / download model from Hugging Face Hub
+python pick3_hf_model.py \
+    --hf-repo username/idaho-pick3-transformer
+
+# Train and automatically push to Hugging Face Hub
+python train_pick_3.py \
+    --epochs 10 \
+    --push-to-hub \
+    --hf-repo username/idaho-pick3-transformer
+```
+
+### Python API Usage
+
+```python
+# 1. Load directly from Hugging Face Hub in Apple MLX
+from idaho.pick3.pick3_llm_ticket_model import Pick3LLM, Pick3Tokenizer
+
+model = Pick3LLM.from_pretrained("username/idaho-pick3-transformer")
+tokenizer = Pick3Tokenizer.from_pretrained("username/idaho-pick3-transformer")
+
+# Push updated model to Hub
+model.push_to_hub("username/idaho-pick3-transformer")
+
+# 2. Load with PyTorch / Hugging Face Transformers
+from idaho.pick3.pick3_hf_model import Pick3ForCausalLM, Pick3HFConfig
+
+pt_model = Pick3ForCausalLM.from_pretrained("username/idaho-pick3-transformer")
+pt_model.eval()
 ```
 
 ---

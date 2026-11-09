@@ -1,0 +1,81 @@
+{
+  "tokenizer_class": "PreTrainedTokenizerFast",
+  "model_type": "gpt2",
+  "vocab_size": 17,
+  "bos_token": "<BOS>",
+  "eos_token": "<EOS>",
+  "pad_token": "<PAD>",
+  "unk_token": "[UNK]",
+  "model_max_length": 128,
+  "clean_up_tokenization_spaces": false,
+  "chat_template": "{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<BOS>' }}{% endif %}{% if message['role'] == 'system' %}{{ '<BOS>' + message['content'].strip() + ' ' }}{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ message['content'].strip() + ' <PRED>' }}{% elif message['role'] == 'assistant' %}{{ ' ' + message['content'].strip() + ' <EOS>' }}{% endif %}{% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{ ' ' }}{% endif %}",
+  "added_tokens_decoder": {
+    "10": {
+      "content": "<PAD>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "11": {
+      "content": "<BOS>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "12": {
+      "content": "<EOS>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "13": {
+      "content": "<DAY>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "14": {
+      "content": "<NIGHT>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "15": {
+      "content": "<SEP>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    },
+    "16": {
+      "content": "<PRED>",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": false,
+      "special": true
+    }
+  },
+  "special_tokens": [
+    "<PAD>",
+    "<BOS>",
+    "<EOS>",
+    "<DAY>",
+    "<NIGHT>",
+    "<SEP>",
+    "<PRED>",
+    "[UNK]",
+    "<UNK>"
+  ]
+}

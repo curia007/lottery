@@ -86,6 +86,10 @@ class TestPick3Process(unittest.TestCase):
             )
 
             self.assertIn("[1-2-3]", report)
+            self.assertIn("The next winning Pick 3 numbers are 1 2 3.", report)
+            self.assertIn("Candidate Alternatives", report)
+            self.assertIn("Positional Breakdown", report)
+            self.assertIn("Box Play Permutations", report)
             self.assertEqual(len(probabilities), 10)
             self.assertTrue(Path(export_path).is_file())
             self.assertEqual(Path(export_path).parent, Path(tmp_dir))

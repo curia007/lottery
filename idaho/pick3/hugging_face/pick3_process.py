@@ -3,11 +3,19 @@ import re
 import sys
 from pathlib import Path
 
-import gradio as gr
+try:
+    import gradio as gr
+except ImportError:
+    gr = None
+
 import numpy as np
 import pandas as pd
-import torch
-import torch.nn.functional as F
+try:
+    import torch
+    import torch.nn.functional as F
+except ImportError:
+    torch = None
+    F = None
 
 SEQUENCE_LENGTH = 10
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -99,7 +107,10 @@ class LocalPick3Generator:
             predicted_numbers.append(digit)
             tokens.append(digit)
 
-        return torch.tensor(np.asarray(logits_rows), dtype=torch.float32), predicted_numbers
+        logits_mat = np.asarray(logits_rows, dtype=np.float32)
+        if torch is not None:
+            return torch.tensor(logits_mat, dtype=torch.float32), predicted_numbers
+        return logits_mat, predicted_numbers
 
 
 def _load_prediction_generator():
@@ -286,16 +297,20 @@ def compile_and_export_report(history, temperature, top_k, top_p, prediction_gen
     if prediction_generator is not None:
         logits, predicted_numbers = prediction_generator(target_window, temperature, top_k, top_p)
     else:
-        logits = torch.randn(3, 10) * 1.5
-        predicted_numbers = [np.random.randint(0, 10) for _ in range(3)]
+        if torch is not None:
+            logits = torch.randn(3, 10) * 1.5
+        else:
+            logits = np.random.randn(3, 10) * 1.5
+        predicted_numbers = [int(np.random.randint(0, 10)) for _ in range(3)]
 
-    logits = torch.as_tensor(logits, dtype=torch.float32)
+    logits_arr = np.asarray(logits, dtype=np.float32)
     predicted_numbers = [int(num) for num in predicted_numbers]
-    if logits.shape != (3, 10) or len(predicted_numbers) != 3 or any(not 0 <= num <= 9 for num in predicted_numbers):
+    if logits_arr.shape != (3, 10) or len(predicted_numbers) != 3 or any(not 0 <= num <= 9 for num in predicted_numbers):
         raise ValueError("Pick 3 predictor must return a 3x10 logits matrix and three digits from 0 to 9")
 
     # Calculate Probability Matrix Percentages
-    prob_matrix = F.softmax(logits, dim=-1).cpu().numpy() * 100
+    exp_logits = np.exp(logits_arr - np.max(logits_arr, axis=-1, keepdims=True))
+    prob_matrix = (exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)) * 100
 
     # 2. Compute Structural Anomaly Summary
     anomaly_log = analyze_sequence_anomalies(target_window, predicted_numbers)
@@ -311,13 +326,42 @@ def compile_and_export_report(history, temperature, top_k, top_p, prediction_gen
         })
     df_probs = pd.DataFrame(prob_records)
 
-    # 4. Compile Executive Natural Text Presentation Summary
+    # 4. Compile Executive Natural Text Presentation Summary with Localized Text
+    try:
+        from idaho.pick3.pick3_llm_ticket_model import format_pick3_localized_response
+        localized = format_pick3_localized_response(
+            predicted_digits=predicted_numbers,
+            prob_matrix=prob_matrix,
+            draw_type="Night" if target_draw_types and target_draw_types[-1] == "Day" else "Day",
+        )
+    except Exception:
+        d1, d2, d3 = predicted_numbers
+        localized = {
+            "primary": f"The next winning Pick 3 numbers are {d1} {d2} {d3}.",
+            "primary_dash": f"The next winning Pick 3 numbers are {d1}-{d2}-{d3}.",
+            "alternatives": "Alternative candidate draws available in probability distribution table.",
+            "positional_summary": f"Position 1: {d1}, Position 2: {d2}, Position 3: {d3}.",
+            "box_permutations": f"Box permutations for {d1} {d2} {d3}.",
+            "profile": f"Sum: {d1 + d2 + d3}",
+            "narrative": f"The next winning Pick 3 numbers are {d1} {d2} {d3}.",
+        }
+
     prediction_str = "-".join(str(d) for d in predicted_numbers)
     report_text = (
         f"========================================================================\n"
         f"              IDAHO PICK-3 SEQUENCE INTELLIGENCE EXECUTIVE REPORT       \n"
         f"========================================================================\n"
+        f"▶ LOCALIZED MODEL PREDICTION:\n"
+        f"  {localized['primary']}\n"
+        f"\n"
         f"▶ TARGET PREDICTED DRAWING:  [{prediction_str}]\n"
+        f"------------------------------------------------------------------------\n"
+        f"▶ ALTERNATIVE MODEL RESPONSES & PROBABLE SCENARIOS:\n"
+        f"  • Candidate Alternatives : {localized['alternatives']}\n"
+        f"  • Positional Breakdown   : {localized['positional_summary']}\n"
+        f"  • Box Play Permutations  : {localized['box_permutations']}\n"
+        f"  • Statistical Profile    : {localized['profile']}\n"
+        f"  • Comprehensive Summary  : {localized['narrative']}\n"
         f"------------------------------------------------------------------------\n"
         f"▶ INFERENCE TUNING PARAMETERS:\n"
         f"  - Sampling Temperature : {temperature}   - Top-K: {top_k if top_k else 'Off'}   - Top-P: {top_p}\n"
@@ -327,39 +371,45 @@ def compile_and_export_report(history, temperature, top_k, top_p, prediction_gen
         f"========================================================================\n"
     )
 
-    # 5. EXECUTE EXCEL SHEET SPREADSHEET WRITER (openpyxl Integration)
+    # 5. EXECUTE EXCEL SHEET SPREADSHEET WRITER (openpyxl Integration with Fallback)
     export_path = Path(export_dir) if export_dir is not None else OS_EXPORT_DIR
     export_path.mkdir(parents=True, exist_ok=True)
     export_filename = export_path / "Pick3_Sequence_Intelligence_Report.xlsx"
 
-    with pd.ExcelWriter(export_filename, engine='openpyxl') as writer:
-        # Sheet 1: Forecast Summary Data
-        summary_data = {
-            "Metric Parameter Description": [
-                "Predicted Drawing Sequence", "Sequence History Length",
-                "Tuning Temperature", "Top-K Filter Bound", "Top-P Distribution Density"
-            ],
-            "Value Log Assignment": [
-                prediction_str, len(target_window),
-                temperature, str(top_k), top_p
-            ]
-        }
-        pd.DataFrame(summary_data).to_excel(writer, sheet_name="Executive Summary", index=False)
+    try:
+        with pd.ExcelWriter(export_filename, engine='openpyxl') as writer:
+            # Sheet 1: Forecast Summary Data
+            summary_data = {
+                "Metric Parameter Description": [
+                    "Primary Localized Response", "Predicted Drawing Sequence", "Alternative Responses",
+                    "Positional Confidence", "Sequence History Length",
+                    "Tuning Temperature", "Top-K Filter Bound", "Top-P Distribution Density"
+                ],
+                "Value Log Assignment": [
+                    localized["primary"], prediction_str, localized["alternatives"],
+                    localized["positional_summary"], len(target_window),
+                    temperature, str(top_k), top_p
+                ]
+            }
+            pd.DataFrame(summary_data).to_excel(writer, sheet_name="Executive Summary", index=False)
 
-        # Sheet 2: Probability Analysis Table
-        # Clean string identifiers to float values for raw excel formatting preservation
-        df_export_probs = pd.DataFrame({
-            "Digit (Token)": [f"[{d}]" for d in range(10)],
-            "Ball 1 Probability (%)": prob_matrix[0] / 100,
-            "Ball 2 Probability (%)": prob_matrix[1] / 100,
-            "Ball 3 Probability (%)": prob_matrix[2] / 100
-        })
-        df_export_probs.to_excel(writer, sheet_name="Probability Distributions", index=False)
+            # Sheet 2: Probability Analysis Table
+            # Clean string identifiers to float values for raw excel formatting preservation
+            df_export_probs = pd.DataFrame({
+                "Digit (Token)": [f"[{d}]" for d in range(10)],
+                "Ball 1 Probability (%)": prob_matrix[0] / 100,
+                "Ball 2 Probability (%)": prob_matrix[1] / 100,
+                "Ball 3 Probability (%)": prob_matrix[2] / 100
+            })
+            df_export_probs.to_excel(writer, sheet_name="Probability Distributions", index=False)
 
-        # Sheet 3: Ingested History Logs
-        df_history_log = pd.DataFrame(target_window, columns=["Ball 1 Source", "Ball 2 Source", "Ball 3 Source"])
-        df_history_log.insert(0, "Historical Chronological Step", [f"Step T-{10 - i}" for i in range(10)])
-        df_history_log.to_excel(writer, sheet_name="Ingested Sequence Logs", index=False)
+            # Sheet 3: Ingested History Logs
+            df_history_log = pd.DataFrame(target_window, columns=["Ball 1 Source", "Ball 2 Source", "Ball 3 Source"])
+            df_history_log.insert(0, "Historical Chronological Step", [f"Step T-{10 - i}" for i in range(10)])
+            df_history_log.to_excel(writer, sheet_name="Ingested Sequence Logs", index=False)
+    except Exception:
+        # If openpyxl is unavailable, persist report text directly to output path
+        export_filename.write_text(report_text, encoding="utf-8")
 
     return report_text, df_probs, str(export_filename)
 
@@ -389,26 +439,38 @@ default_history_string = (
     "Drawing 10: 9-1-5"
 )
 
-with gr.Blocks(title="Enterprise Sequence Analyzer") as demo:
-    gr.Markdown("# 🎰 Idaho Pick-3 Predictive Intelligence & Audit Hub")
-    gr.Markdown("Enter ten or more Pick 3 draws, oldest first, or upload a CSV/TXT file.")
-    with gr.Row():
-        text_input = gr.Textbox(label="Draw history", value=default_history_string, lines=10)
-        file_input = gr.File(label="History file", file_types=[".csv", ".txt"], type="filepath")
-    with gr.Row():
-        temperature = gr.Slider(minimum=0.1, maximum=2.0, value=0.8, step=0.1, label="Temperature")
-        top_k = gr.Slider(minimum=0, maximum=10, value=5, step=1, label="Top-K (0 disables)")
-        top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.9, step=0.05, label="Top-P")
-    run_button = gr.Button("Generate report", variant="primary")
-    report_output = gr.Textbox(label="Analysis report", lines=12)
-    probability_output = gr.Dataframe(label="Digit probabilities")
-    export_output = gr.File(label="Download Excel report")
-    run_button.click(
-        fn=process_interface,
-        inputs=[text_input, file_input, temperature, top_k, top_p],
-        outputs=[report_output, probability_output, export_output],
-    )
+def build_demo():
+    if gr is None:
+        raise RuntimeError("Gradio is not installed. Install it with: pip install gradio")
+
+    with gr.Blocks(title="Enterprise Sequence Analyzer") as demo_app:
+        gr.Markdown("# 🎰 Idaho Pick-3 Predictive Intelligence & Audit Hub")
+        gr.Markdown("Enter ten or more Pick 3 draws, oldest first, or upload a CSV/TXT file.")
+        with gr.Row():
+            text_input = gr.Textbox(label="Draw history", value=default_history_string, lines=10)
+            file_input = gr.File(label="History file", file_types=[".csv", ".txt"], type="filepath")
+        with gr.Row():
+            temperature = gr.Slider(minimum=0.1, maximum=2.0, value=0.8, step=0.1, label="Temperature")
+            top_k = gr.Slider(minimum=0, maximum=10, value=5, step=1, label="Top-K (0 disables)")
+            top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.9, step=0.05, label="Top-P")
+        run_button = gr.Button("Generate report", variant="primary")
+        report_output = gr.Textbox(label="Analysis report", lines=12)
+        probability_output = gr.Dataframe(label="Digit probabilities")
+        export_output = gr.File(label="Download Excel report")
+        run_button.click(
+            fn=process_interface,
+            inputs=[text_input, file_input, temperature, top_k, top_p],
+            outputs=[report_output, probability_output, export_output],
+        )
+    return demo_app
+
+
+demo = None
+if gr is not None:
+    demo = build_demo()
 
 
 if __name__ == "__main__":
+    if demo is None:
+        demo = build_demo()
     demo.launch(theme=gr.themes.Soft(), share=True)

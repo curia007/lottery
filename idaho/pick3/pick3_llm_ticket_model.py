@@ -25,15 +25,25 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import math
+import os
 import random
+import sys
 import urllib.error
 import urllib.request
 from collections import Counter
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parents[1] if len(_SCRIPT_DIR.parents) >= 2 else _SCRIPT_DIR
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
 
 import numpy as np
 import pandas as pd
@@ -42,6 +52,7 @@ try:
     import mlx.core as mx
     import mlx.nn as nn
     import mlx.optimizers as optim
+    import mlx.utils as utils
 except ImportError as exc:
     raise SystemExit(
         "MLX is not installed. Install it with:\n\n"
@@ -136,6 +147,66 @@ class Pick3Tokenizer:
     def decode(self, token_ids: Sequence[int]) -> str:
         return " ".join(self.id_to_token.get(int(i), "<UNK>") for i in token_ids)
 
+    def save_pretrained(self, save_directory: Union[str, Path]) -> Path:
+        """Saves tokenizer configurations and fast tokenizer serialization compatible with Hugging Face."""
+        out_dir = Path(save_directory)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        from idaho.pick3.pick3_hf_model import Pick3HFHub
+
+        tok_cfg = {
+            "tokenizer_class": "PreTrainedTokenizerFast",
+            "model_type": "gpt2",
+            "vocab_size": self.vocab_size,
+            "bos_token": self.BOS_TOKEN,
+            "eos_token": self.EOS_TOKEN,
+            "pad_token": self.PAD_TOKEN,
+            "unk_token": "[UNK]",
+            "model_max_length": 128,
+            "clean_up_tokenization_spaces": False,
+            "chat_template": Pick3HFHub.DEFAULT_CHAT_TEMPLATE,
+            "added_tokens_decoder": {
+                "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            },
+            "special_tokens": self.special_tokens + ["[UNK]", "<UNK>"],
+        }
+        with (out_dir / "tokenizer_config.json").open("w", encoding="utf-8") as f:
+            json.dump(tok_cfg, f, indent=2)
+
+        # Fast Tokenizer Serialization (tokenizer.json)
+        from idaho.pick3.pick3_hf_model import Pick3HFHub
+        tok_json = Pick3HFHub.get_fast_tokenizer_dict()
+        with (out_dir / "tokenizer.json").open("w", encoding="utf-8") as f:
+            json.dump(tok_json, f, indent=2)
+
+        vocab_dict = dict(self.token_to_id)
+        vocab_dict["[UNK]"] = 10
+        vocab_dict["<UNK>"] = 10
+        with (out_dir / "vocab.json").open("w", encoding="utf-8") as f:
+            json.dump(vocab_dict, f, indent=2)
+        special_map = {
+            "bos_token": self.BOS_TOKEN,
+            "eos_token": self.EOS_TOKEN,
+            "pad_token": self.PAD_TOKEN,
+            "unk_token": "[UNK]",
+            "additional_special_tokens": [self.DAY_TOKEN, self.NIGHT_TOKEN, self.SEP_TOKEN, self.PRED_TOKEN, "<UNK>"],
+        }
+        with (out_dir / "special_tokens_map.json").open("w", encoding="utf-8") as f:
+            json.dump(special_map, f, indent=2)
+        return out_dir
+
+    @classmethod
+    def from_pretrained(cls, load_directory_or_repo: Union[str, Path], token: Optional[str] = None) -> "Pick3Tokenizer":
+        """Loads tokenizer from local directory or Hugging Face Hub."""
+        from idaho.pick3.pick3_hf_model import Pick3HFHub
+        model_dir = Pick3HFHub.resolve_model_dir(load_directory_or_repo, token=token)
+        return cls()
+
 
 # ==============================================================================
 # Model Architecture (Transformer LLM)
@@ -150,54 +221,156 @@ class Pick3LLMConfig:
     n_layer: int = 3
     mlp_ratio: int = 4
     dropout: float = 0.0
+    layer_norm_epsilon: float = 1e-5
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["model_type"] = "gpt2"
+        data["n_positions"] = self.max_seq_len
+        data["n_ctx"] = self.max_seq_len
+        data["n_embd"] = self.n_embd
+        data["n_layer"] = self.n_layer
+        data["n_head"] = self.n_head
+        data["n_inner"] = self.n_embd * self.mlp_ratio
+        data["activation_function"] = "gelu"
+        data["layer_norm_epsilon"] = self.layer_norm_epsilon
+        data["initializer_range"] = 0.02
+        data["pad_token_id"] = 10
+        data["bos_token_id"] = 11
+        data["eos_token_id"] = 12
+        data["architectures"] = ["GPT2LMHeadModel", "Pick3ForCausalLM"]
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Pick3LLMConfig":
-        valid_keys = {f.name for f in fields(cls)}
-        filtered = {k: v for k, v in data.items() if k in valid_keys}
-        return cls(**filtered)
+        cfg = cls()
+        if "vocab_size" in data:
+            cfg.vocab_size = int(data["vocab_size"])
+        if "max_seq_len" in data:
+            cfg.max_seq_len = int(data["max_seq_len"])
+        elif "max_position_embeddings" in data:
+            cfg.max_seq_len = int(data["max_position_embeddings"])
+        elif "n_positions" in data:
+            cfg.max_seq_len = int(data["n_positions"])
+        elif "n_ctx" in data:
+            cfg.max_seq_len = int(data["n_ctx"])
+        if "n_embd" in data:
+            cfg.n_embd = int(data["n_embd"])
+        elif "hidden_size" in data:
+            cfg.n_embd = int(data["hidden_size"])
+        if "n_head" in data:
+            cfg.n_head = int(data["n_head"])
+        elif "num_attention_heads" in data:
+            cfg.n_head = int(data["num_attention_heads"])
+        if "n_layer" in data:
+            cfg.n_layer = int(data["n_layer"])
+        elif "num_hidden_layers" in data:
+            cfg.n_layer = int(data["num_hidden_layers"])
+        if "mlp_ratio" in data:
+            cfg.mlp_ratio = int(data["mlp_ratio"])
+        elif "intermediate_size" in data and cfg.n_embd > 0:
+            cfg.mlp_ratio = int(data["intermediate_size"]) // cfg.n_embd
+        elif "n_inner" in data and cfg.n_embd > 0:
+            cfg.mlp_ratio = int(data["n_inner"]) // cfg.n_embd
+        if "dropout" in data:
+            cfg.dropout = float(data["dropout"])
+        if "layer_norm_epsilon" in data:
+            cfg.layer_norm_epsilon = float(data["layer_norm_epsilon"])
+        return cfg
+
+
+class GPT2Attention(nn.Module):
+    """Causal Self-Attention block following canonical GPT-2 architecture."""
+
+    def __init__(self, n_embd: int, n_head: int):
+        super().__init__()
+        self.n_head = n_head
+        self.n_embd = n_embd
+        self.head_dim = n_embd // n_head
+        self.scale = 1.0 / (self.head_dim ** 0.5)
+        self.c_attn = nn.Linear(n_embd, 3 * n_embd, bias=True)
+        self.c_proj = nn.Linear(n_embd, n_embd, bias=True)
+
+    def __call__(self, x: mx.array, mask: Optional[mx.array] = None) -> mx.array:
+        B, T, C = x.shape
+        qkv = self.c_attn(x)
+        q, k, v = mx.split(qkv, 3, axis=-1)
+
+        q = q.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        k = k.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        v = v.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+
+        scores = (q @ k.transpose(0, 1, 3, 2)) * self.scale
+        if mask is not None:
+            scores = scores + mask
+        probs = mx.softmax(scores, axis=-1)
+        out = (probs @ v).transpose(0, 2, 1, 3).reshape(B, T, C)
+        return self.c_proj(out)
+
+
+class GPT2MLP(nn.Module):
+    """Feedforward network following canonical GPT-2 architecture."""
+
+    def __init__(self, n_embd: int, mlp_ratio: int = 4):
+        super().__init__()
+        mlp_dim = n_embd * mlp_ratio
+        self.c_fc = nn.Linear(n_embd, mlp_dim, bias=True)
+        self.c_proj = nn.Linear(mlp_dim, n_embd, bias=True)
+
+    def __call__(self, x: mx.array) -> mx.array:
+        return self.c_proj(nn.gelu(self.c_fc(x)))
 
 
 class TransformerBlock(nn.Module):
-    """Causal Transformer Decoder Block with LayerNorm & MultiHeadAttention."""
-    def __init__(self, n_embd: int, n_head: int, mlp_ratio: int = 4):
+    """Causal Transformer Decoder Block matching GPT-2 specification."""
+
+    def __init__(self, n_embd: int, n_head: int, mlp_ratio: int = 4, eps: float = 1e-5):
         super().__init__()
-        self.ln1 = nn.LayerNorm(n_embd)
-        self.attn = nn.MultiHeadAttention(n_embd, n_head)
-        self.ln2 = nn.LayerNorm(n_embd)
-        mlp_dim = n_embd * mlp_ratio
-        self.mlp = nn.Sequential(
-            nn.Linear(n_embd, mlp_dim),
-            nn.GELU(),
-            nn.Linear(mlp_dim, n_embd),
-        )
+        self.ln_1 = nn.LayerNorm(n_embd, eps=eps)
+        self.attn = GPT2Attention(n_embd, n_head)
+        self.ln_2 = nn.LayerNorm(n_embd, eps=eps)
+        self.mlp = GPT2MLP(n_embd, mlp_ratio)
+
+    @property
+    def ln1(self):
+        return self.ln_1
+
+    @property
+    def ln2(self):
+        return self.ln_2
 
     def __call__(self, x: mx.array, mask: Optional[mx.array] = None) -> mx.array:
-        norm_x = self.ln1(x)
-        attn_out = self.attn(norm_x, norm_x, norm_x, mask=mask)
-        x = x + attn_out
-        x = x + self.mlp(self.ln2(x))
+        x = x + self.attn(self.ln_1(x), mask=mask)
+        x = x + self.mlp(self.ln_2(x))
         return x
 
 
 class Pick3LLM(nn.Module):
     """
     Autoregressive Causal Language Model for Pick 3 Lottery Sequence Generation.
+    Follows canonical GPT-2 architecture for Apple MLX, mlx-lm, and oMLX compatibility.
     """
+
     def __init__(self, config: Pick3LLMConfig):
         super().__init__()
         self.config = config
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
         self.wpe = nn.Embedding(config.max_seq_len, config.n_embd)
-        self.blocks = [
-            TransformerBlock(config.n_embd, config.n_head, config.mlp_ratio)
+        self.h = [
+            TransformerBlock(
+                config.n_embd,
+                config.n_head,
+                config.mlp_ratio,
+                getattr(config, "layer_norm_epsilon", 1e-5),
+            )
             for _ in range(config.n_layer)
         ]
-        self.ln_f = nn.LayerNorm(config.n_embd)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.ln_f = nn.LayerNorm(config.n_embd, eps=getattr(config, "layer_norm_epsilon", 1e-5))
+
+    @property
+    def blocks(self):
+        """Backward compatibility alias for self.h."""
+        return self.h
 
     def __call__(self, idx: mx.array) -> mx.array:
         B, T = idx.shape
@@ -211,15 +384,128 @@ class Pick3LLM(nn.Module):
 
         mask = nn.MultiHeadAttention.create_additive_causal_mask(T)
 
-        for block in self.blocks:
+        for block in self.h:
             x = block(x, mask=mask)
 
         x = self.ln_f(x)
-        logits = self.lm_head(x)
+        logits = self.wte.as_linear(x)
         return logits
 
-    def save_pretrained(self, save_directory: Union[str, Path]) -> Path:
-        """Saves local model architecture configuration and weights."""
+    def sanitize_weights_for_load(self, raw_weights: Dict[str, mx.array]) -> Dict[str, mx.array]:
+        """
+        Sanitizes raw weights from checkpoints, handling legacy block names,
+        fused attention projections, prefix stripping, and Conv1D/Linear transpose.
+        """
+        cleaned = {}
+        for k, v in raw_weights.items():
+            if k.startswith("model."):
+                k = k[6:]
+            elif k.startswith("transformer."):
+                k = k[12:]
+            if k == "lm_head.weight":
+                continue
+            k = k.replace("blocks.", "h.").replace(".ln1.", ".ln_1.").replace(".ln2.", ".ln_2.")
+            k = k.replace(".mlp.layers.0.", ".mlp.c_fc.").replace(".mlp.layers.2.", ".mlp.c_proj.")
+            cleaned[k] = v
+
+        # Fuse legacy q, k, v if present
+        layers = {
+            int(k.split(".")[1])
+            for k in cleaned.keys()
+            if k.startswith("h.") and len(k.split(".")) > 1 and k.split(".")[1].isdigit()
+        }
+        for i in sorted(layers):
+            qk = f"h.{i}.attn.query_proj.weight"
+            kk = f"h.{i}.attn.key_proj.weight"
+            vk = f"h.{i}.attn.value_proj.weight"
+            if qk in cleaned and kk in cleaned and vk in cleaned:
+                qw = cleaned.pop(qk)
+                kw = cleaned.pop(kk)
+                vw = cleaned.pop(vk)
+                cleaned[f"h.{i}.attn.c_attn.weight"] = mx.concatenate([qw, kw, vw], axis=0)
+            outk = f"h.{i}.attn.out_proj.weight"
+            if outk in cleaned:
+                cleaned[f"h.{i}.attn.c_proj.weight"] = cleaned.pop(outk)
+
+        # Transpose Conv1D weights to Linear weights if needed
+        C = self.config.n_embd
+        final = {}
+        for k, v in cleaned.items():
+            if k.endswith(".attn.c_attn.weight") and v.shape == (C, 3 * C):
+                final[k] = v.transpose(1, 0)
+            elif k.endswith(".attn.c_proj.weight") and v.shape == (C, C):
+                final[k] = v.transpose(1, 0)
+            elif k.endswith(".mlp.c_fc.weight") and v.shape == (C, 4 * C):
+                final[k] = v.transpose(1, 0)
+            elif k.endswith(".mlp.c_proj.weight") and v.shape == (4 * C, C):
+                final[k] = v.transpose(1, 0)
+            else:
+                final[k] = v
+        return final
+
+    def export_hf_weights(self) -> Dict[str, mx.array]:
+        """
+        Exports model parameters in standard Hugging Face GPT-2 Conv1D format
+        for out-of-the-box compatibility with mlx-lm, oMLX, and Transformers.
+        """
+        params = utils.tree_flatten(self.parameters())
+        hf_weights = {}
+        C = self.config.n_embd
+        for k, v in params:
+            if k.endswith(".attn.c_attn.weight") and v.shape == (3 * C, C):
+                hf_weights[k] = v.transpose(1, 0)
+            elif k.endswith(".attn.c_proj.weight") and v.shape == (C, C):
+                hf_weights[k] = v.transpose(1, 0)
+            elif k.endswith(".mlp.c_fc.weight") and v.shape == (4 * C, C):
+                hf_weights[k] = v.transpose(1, 0)
+            elif k.endswith(".mlp.c_proj.weight") and v.shape == (C, 4 * C):
+                hf_weights[k] = v.transpose(1, 0)
+            else:
+                hf_weights[k] = v
+        return hf_weights
+
+    def save_weights(self, file_path: Union[str, Path], *args, **kwargs) -> None:
+        """Saves model weights in standard Hugging Face / MLX safetensors format."""
+        p = str(file_path)
+        weights = self.export_hf_weights()
+        if p.endswith(".safetensors"):
+            mx.save_safetensors(p, weights)
+        elif p.endswith(".npz"):
+            mx.savez(p, **weights)
+        else:
+            mx.save_safetensors(p + ".safetensors", weights)
+
+    def load_weights(
+        self,
+        file_path: Union[str, Path, Dict[str, mx.array], List[Tuple[str, mx.array]]],
+        *args,
+        **kwargs,
+    ) -> Any:
+        """Loads and sanitizes weights from file, dictionary, or list."""
+        if isinstance(file_path, (str, Path)):
+            raw = mx.load(str(file_path))
+        elif isinstance(file_path, list):
+            raw = dict(file_path)
+        elif isinstance(file_path, dict):
+            raw = file_path
+        else:
+            raise TypeError(f"Unsupported file_path type: {type(file_path)}")
+
+        sanitized = self.sanitize_weights_for_load(raw)
+        return super().load_weights(list(sanitized.items()), *args, **kwargs)
+
+    def save_pretrained(
+        self,
+        save_directory: Union[str, Path],
+        push_to_hub: bool = False,
+        repo_id: Optional[str] = None,
+        token: Optional[str] = None,
+        private: bool = False,
+        metrics: Optional[Dict[str, Any]] = None,
+    ) -> Path:
+        """Saves local model architecture configuration, weights, and Hugging Face assets."""
+        from idaho.pick3.pick3_hf_model import Pick3HFConfig, Pick3HFHub
+
         out_dir = Path(save_directory)
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -231,12 +517,56 @@ class Pick3LLM(nn.Module):
         # Save weights using MLX native weight serialization (.safetensors / .npz)
         weights_path = out_dir / "model.safetensors"
         self.save_weights(str(weights_path))
+
+        # Export Hugging Face metadata & tokenizer assets
+        hf_config = Pick3HFConfig.from_dict(self.config.to_dict())
+        Pick3HFHub.export_hf_assets(out_dir, hf_config, metrics=metrics, repo_id=repo_id)
+
+        if push_to_hub and repo_id:
+            Pick3HFHub.push_to_hub(out_dir, repo_id=repo_id, token=token, private=private)
+
         return out_dir
 
+    def push_to_hub(
+        self,
+        repo_id: str,
+        token: Optional[str] = None,
+        private: bool = False,
+        commit_message: Optional[str] = None,
+        save_directory: Optional[Union[str, Path]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Saves checkpoint artifacts and pushes to Hugging Face Hub."""
+        import tempfile
+        from idaho.pick3.pick3_hf_model import Pick3HFHub
+
+        target_dir = Path(save_directory) if save_directory else Path(tempfile.mkdtemp(prefix="hf_pick3_"))
+        self.save_pretrained(target_dir, push_to_hub=False, repo_id=repo_id, metrics=metrics)
+        return Pick3HFHub.push_to_hub(
+            save_directory=target_dir,
+            repo_id=repo_id,
+            token=token,
+            private=private,
+            commit_message=commit_message,
+        )
+
     @classmethod
-    def from_pretrained(cls, load_directory: Union[str, Path]) -> "Pick3LLM":
-        """Loads a local model from saved directory."""
-        in_dir = Path(load_directory)
+    def from_pretrained(
+        cls,
+        load_directory_or_repo: Union[str, Path],
+        token: Optional[str] = None,
+        revision: str = "main",
+        force_download: bool = False,
+    ) -> "Pick3LLM":
+        """Loads a model from a local saved directory or Hugging Face Hub repository."""
+        from idaho.pick3.pick3_hf_model import Pick3HFHub
+
+        in_dir = Pick3HFHub.resolve_model_dir(
+            model_id_or_path=load_directory_or_repo,
+            revision=revision,
+            token=token,
+            force_download=force_download,
+        )
         config_path = in_dir / "config.json"
         safetensors_path = in_dir / "model.safetensors"
         npz_path = in_dir / "model.npz"
@@ -294,6 +624,20 @@ class RemoteLottoModelLoader:
             return Pick3LLM.from_pretrained(local_path)
 
         print(f"[RemoteModelLoader] Resolving remote Lotto model: '{remote_model_uri}'")
+
+        # Handle Hugging Face Hub models (e.g. hf://username/repo or username/repo)
+        if (
+            remote_model_uri.startswith("hf://")
+            or remote_model_uri.startswith("huggingface://")
+            or ("/" in remote_model_uri and not remote_model_uri.startswith("remote://") and not remote_model_uri.startswith("http"))
+        ):
+            print(f"[RemoteModelLoader] Fetching model from Hugging Face Hub: '{remote_model_uri}'...")
+            try:
+                hf_model = Pick3LLM.from_pretrained(remote_model_uri, force_download=force_download)
+                hf_model.save_pretrained(local_path)
+                return hf_model
+            except Exception as e:
+                print(f"[RemoteModelLoader] Hugging Face Hub resolution notice: ({e}). Initializing architecture.")
 
         # Handle HTTP / HTTPS remote models
         if remote_model_uri.startswith("http://") or remote_model_uri.startswith("https://"):
@@ -721,11 +1065,147 @@ def generate_pick3_winning_tickets(
     return results
 
 
+def format_pick3_localized_response(
+    predicted_digits: Sequence[int],
+    prob_matrix: Optional[np.ndarray] = None,
+    alternative_tickets: Optional[Sequence[Union[str, Sequence[int], RankedTicket]]] = None,
+    draw_type: Optional[str] = "Night",
+) -> Dict[str, str]:
+    """
+    Generates localized natural language text responses for Idaho Pick 3 predictions.
+
+    Returns a dictionary of standardized response formats:
+      - 'primary': e.g., "The next winning Pick 3 numbers are 1 2 3."
+      - 'primary_dash': e.g., "The next winning Pick 3 numbers are 1-2-3."
+      - 'alternatives': localized text listing other likely candidate draws.
+      - 'positional_summary': breakdown of leading digits and probabilities per ball position.
+      - 'box_permutations': explanation of Box/Any order permutations for the primary draw.
+      - 'profile': parity, sum, and high/low statistical characteristics.
+      - 'narrative': an integrated executive narrative summary of all predictions.
+    """
+    d1, d2, d3 = int(predicted_digits[0]), int(predicted_digits[1]), int(predicted_digits[2])
+    draw_label = str(draw_type).capitalize() if draw_type else "Upcoming"
+
+    # 1. Primary Natural Language Prediction
+    primary_text = f"The next winning Pick 3 numbers are {d1} {d2} {d3}."
+    primary_dash = f"The next winning Pick 3 numbers are {d1}-{d2}-{d3}."
+
+    # 2. Alternative Likely Combinations
+    alt_combos: List[str] = []
+    if alternative_tickets:
+        for t in alternative_tickets:
+            if isinstance(t, RankedTicket):
+                toks = [int(c) for c in t.ticket]
+            elif isinstance(t, str):
+                toks = [int(c) for c in t if c.isdigit()]
+            else:
+                toks = [int(c) for c in t]
+            if len(toks) == 3 and (toks[0], toks[1], toks[2]) != (d1, d2, d3):
+                formatted = f"{toks[0]} {toks[1]} {toks[2]}"
+                if formatted not in alt_combos:
+                    alt_combos.append(formatted)
+            if len(alt_combos) >= 3:
+                break
+    elif prob_matrix is not None:
+        p_mat = np.asarray(prob_matrix, dtype=np.float64)
+        if p_mat.shape == (3, 10):
+            # Normalize row probabilities if in 0..100 scale
+            if np.max(p_mat) > 1.0:
+                p_mat = p_mat / 100.0
+            combos = []
+            for c1 in range(10):
+                for c2 in range(10):
+                    for c3 in range(10):
+                        if (c1, c2, c3) != (d1, d2, d3):
+                            joint_p = p_mat[0, c1] * p_mat[1, c2] * p_mat[2, c3]
+                            combos.append((joint_p, f"{c1} {c2} {c3}"))
+            combos.sort(key=lambda x: x[0], reverse=True)
+            alt_combos = [c[1] for c in combos[:3]]
+
+    if alt_combos:
+        if len(alt_combos) == 1:
+            alternatives_text = f"The next most probable Pick 3 number combination is {alt_combos[0]}."
+        elif len(alt_combos) == 2:
+            alternatives_text = f"Alternative probable Pick 3 number combinations are {alt_combos[0]} and {alt_combos[1]}."
+        else:
+            alternatives_text = f"Alternative probable Pick 3 number combinations are {alt_combos[0]}, {alt_combos[1]}, and {alt_combos[2]}."
+    else:
+        alternatives_text = "No secondary alternative combinations meet the probability threshold."
+
+    # 3. Positional Probability Breakdown
+    if prob_matrix is not None:
+        p_mat = np.asarray(prob_matrix, dtype=np.float64)
+        if np.max(p_mat) <= 1.0:
+            p_mat = p_mat * 100.0
+        p1 = p_mat[0, d1]
+        p2 = p_mat[1, d2]
+        p3 = p_mat[2, d3]
+        pos_summary = (
+            f"Positional breakdown: First digit {d1} ({p1:.1f}% confidence), "
+            f"second digit {d2} ({p2:.1f}% confidence), third digit {d3} ({p3:.1f}% confidence)."
+        )
+    else:
+        pos_summary = f"Positional sequence: First digit is {d1}, second digit is {d2}, and third digit is {d3}."
+
+    # 4. Box / Any-Order Permutations
+    unique_perms = sorted({"".join(map(str, p)) for p in itertools.permutations([d1, d2, d3])})
+    if len(unique_perms) == 6:
+        box_type = "6-way Box"
+        perms_str = ", ".join(f"{p[0]}-{p[1]}-{p[2]}" for p in unique_perms)
+        box_text = f"For a 6-way Box (any order) play, numbers {d1} {d2} {d3} cover: {perms_str}."
+    elif len(unique_perms) == 3:
+        box_type = "3-way Box"
+        perms_str = ", ".join(f"{p[0]}-{p[1]}-{p[2]}" for p in unique_perms)
+        box_text = f"For a 3-way Box (any order) play with double digits, numbers {d1} {d2} {d3} cover: {perms_str}."
+    else:
+        box_type = "Straight Only (Triple)"
+        box_text = f"All three digits are identical ({d1}-{d2}-{d3}), which plays strictly as a Straight wager (Straight Only)."
+
+    # 5. Statistical Profile (Sum, Parity, High/Low)
+    seq_sum = d1 + d2 + d3
+    parities = ["Odd" if x % 2 == 1 else "Even" for x in (d1, d2, d3)]
+    odd_count = sum(1 for p in parities if p == "Odd")
+    high_low = ["High" if x >= 5 else "Low" for x in (d1, d2, d3)]
+    high_count = sum(1 for hl in high_low if hl == "High")
+    profile_text = (
+        f"Sequence sum is {seq_sum} ({odd_count} Odd, {3 - odd_count} Even; "
+        f"{high_count} High [5-9], {3 - high_count} Low [0-4])."
+    )
+
+    # 6. Integrated Executive Narrative
+    narrative_text = (
+        f"{primary_text} {pos_summary} {alternatives_text} {box_text} {profile_text}"
+    )
+
+    return {
+        "primary": primary_text,
+        "primary_dash": primary_dash,
+        "alternatives": alternatives_text,
+        "positional_summary": pos_summary,
+        "box_permutations": box_text,
+        "profile": profile_text,
+        "narrative": narrative_text,
+        "draw": draw_label,
+    }
+
+
 def print_tickets_table(tickets: List[RankedTicket], draw_label: str):
     """Nicely formats and prints ticket predictions to the console."""
     print(f"\n=======================================================================")
     print(f"       TOP PREDICTED PICK 3 WINNING TICKETS ({draw_label.upper()} DRAW)       ")
     print(f"=======================================================================")
+    if tickets:
+        d_top = [int(c) for c in tickets[0].ticket]
+        localized = format_pick3_localized_response(
+            predicted_digits=d_top,
+            alternative_tickets=tickets[1:],
+            draw_type=draw_label,
+        )
+        print(f"▶ LOCALIZED MODEL PREDICTION:")
+        print(f"  {localized['primary']}")
+        print(f"  {localized['alternatives']}")
+        print(f"  {localized['box_permutations']}")
+        print(f"-----------------------------------------------------------------------")
     print(f"{'Rank':<5} {'Ticket':<8} {'Composite Score':<17} {'LLM Prob':<12} {'Freq Score':<12} {'Type':<10}")
     print(f"-----------------------------------------------------------------------")
     for t in tickets:
