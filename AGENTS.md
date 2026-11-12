@@ -15,7 +15,7 @@ guarantees of future results.
   implementations and datasets.
 - `millionaire_life/patterns/`: pattern analysis, ticket generation, and
   match prediction.
-- `next_winners.py`: unified CLI for Idaho Cash, Pick 3, and Pick 4.
+- `idaho/pick3/next_winners.py`: unified CLI for Idaho Cash, Pick 3, and Pick 4.
 - `tests/`: standard-library `unittest` tests with synthetic draw fixtures.
 - `models/` and game-local `models/`: saved model configuration and weights.
 - `README.md`: installation instructions and game-specific CLI examples.

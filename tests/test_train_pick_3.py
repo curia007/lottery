@@ -215,6 +215,11 @@ class TestTrainPick3(unittest.TestCase):
             self.assertTrue(history_json.exists())
 
     def test_cli_execution(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        script_path = repo_root / "train_pick_3.py"
+        if not script_path.exists():
+            script_path = repo_root / "idaho" / "pick3" / "train_pick_3.py"
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             jsonl_path = Path(tmp_dir) / "test_history.jsonl"
             model_dir = Path(tmp_dir) / "cli_model"
@@ -233,7 +238,7 @@ class TestTrainPick3(unittest.TestCase):
 
             cmd = [
                 sys.executable,
-                "train_pick_3.py",
+                str(script_path),
                 "--jsonl", str(jsonl_path),
                 "--model-dir", str(model_dir),
                 "--epochs", "1",
@@ -245,7 +250,7 @@ class TestTrainPick3(unittest.TestCase):
                 "--n-layer", "2",
                 "--history-json", str(history_json),
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(repo_root))
             self.assertEqual(res.returncode, 0, f"CLI execution failed:\n{res.stderr}")
             self.assertTrue((model_dir / "config.json").exists())
             self.assertTrue(history_json.exists())

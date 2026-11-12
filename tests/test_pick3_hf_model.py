@@ -63,6 +63,16 @@ class TestPick3HFModel(unittest.TestCase):
         self.assertEqual(data["max_seq_len"], 64)
         self.assertEqual(data["mlp_ratio"], 4)
 
+        # Test id2label and label2id serialization
+        self.assertIn("id2label", data)
+        self.assertIn("label2id", data)
+        self.assertEqual(data["id2label"]["0"], "0")
+        self.assertEqual(data["id2label"]["1"], "1")
+        self.assertEqual(data["id2label"]["10"], "<PAD>")
+        self.assertEqual(data["id2label"]["16"], "<PRED>")
+        self.assertEqual(data["label2id"]["0"], 0)
+        self.assertEqual(data["label2id"]["<PRED>"], 16)
+
         # Roundtrip from dict
         loaded = Pick3HFConfig.from_dict(data)
         self.assertEqual(loaded.model_type, "gpt2")
@@ -70,6 +80,12 @@ class TestPick3HFModel(unittest.TestCase):
         self.assertEqual(loaded.hidden_size, 32)
         self.assertEqual(loaded.num_attention_heads, 2)
         self.assertEqual(loaded.layer_norm_epsilon, 1e-5)
+        self.assertEqual(loaded.id2label[0], "0")
+        self.assertEqual(loaded.id2label[10], "<PAD>")
+        self.assertEqual(loaded.label2id["<PAD>"], 10)
+        self.assertEqual(loaded.map_id_to_label(1), "1")
+        self.assertEqual(loaded.map_id_to_label("13"), "<DAY>")
+        self.assertEqual(loaded.map_ids_to_labels([1, 2, 3]), ["1", "2", "3"])
 
         # JSON file roundtrip
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -141,6 +157,12 @@ class TestPick3HFModel(unittest.TestCase):
             self.assertEqual(tok_json["model"]["vocab"]["[UNK]"], 10)
             self.assertEqual(tok_json["model"]["vocab"]["<UNK>"], 10)
             self.assertEqual(tok_json["model"]["unk_token"], "[UNK]")
+            self.assertEqual(tok_json["added_tokens"][3]["special"], False)
+            self.assertEqual(tok_json["added_tokens"][4]["special"], False)
+            self.assertEqual(tok_json["added_tokens"][5]["special"], False)
+            self.assertEqual(tok_json["added_tokens"][6]["special"], False)
+            self.assertEqual(tok_json["decoder"]["type"], "Sequence")
+            self.assertTrue(tok_json["decoder"]["decoders"])
 
             # Validate tokenizer JSON format
             with (out_dir / "vocab.json").open("r", encoding="utf-8") as f:
@@ -185,6 +207,23 @@ class TestPick3HFModel(unittest.TestCase):
 
             token_ids = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
             self.assertEqual(token_ids, [11, 13, 1, 2, 3, 15, 14, 16])
+
+            draw_text = "<DAY> 6 5 2 <SEP> <NIGHT> 4 1 3 <EOS>"
+            draw_ids = tokenizer.encode(draw_text)
+            self.assertEqual(draw_ids, [13, 6, 5, 2, 15, 14, 4, 1, 3, 12])
+            self.assertEqual(
+                tokenizer.decode(draw_ids),
+                "Day draw: 6 5 2. Night draw: 4 1 3.",
+            )
+
+            # Test messages with content=None (chat streaming initialization and tool chunks)
+            none_messages = [
+                {"role": "system", "content": None},
+                {"role": "user", "content": "<DAY> 1 2 3 <SEP> <NIGHT>"},
+                {"role": "assistant", "content": None},
+            ]
+            rendered_none = tokenizer.apply_chat_template(none_messages, tokenize=False, add_generation_prompt=True)
+            self.assertEqual(rendered_none, "<BOS><DAY> 1 2 3 <SEP> <NIGHT> <PRED> ")
 
     @unittest.skipIf(mx is None, "MLX is not installed")
     def test_mlx_model_save_and_from_pretrained_with_hf_assets(self):
@@ -254,7 +293,89 @@ class TestPick3HFModel(unittest.TestCase):
             loaded_pt = Pick3ForCausalLM.from_pretrained(pt_save_dir)
             self.assertEqual(loaded_pt.config.hidden_size, 32)
 
+            # Test PyTorch localized response text generation
+            prompt = [11, 13, 1, 2, 3, 15, 16, 14]
+            resp_text = loaded_pt.generate_response_text(prompt_tokens=prompt, draw_type="Night")
+            self.assertTrue(resp_text.startswith("The next winning Pick 3 numbers are"))
+            localized_dict = loaded_pt.generate_localized_prediction(prompt_tokens=prompt, draw_type="Night")
+            self.assertIn("primary", localized_dict)
+            self.assertIn("alternatives", localized_dict)
+            self.assertIn("box_permutations", localized_dict)
+
+    def test_tokenizer_and_hub_decode_localized_response(self):
+        tokenizer = Pick3Tokenizer()
+        # Decode standard tokens
+        raw_text = tokenizer.decode([1, 2, 3])
+        self.assertEqual(raw_text, "1 2 3")
+
+        # Decode with skip_special_tokens
+        stripped = tokenizer.decode([11, 13, 1, 2, 3, 15, 12], skip_special_tokens=True)
+        self.assertEqual(stripped, "1 2 3")
+
+        # Decode with localize=True
+        localized = tokenizer.decode([1, 2, 3], localize=True)
+        self.assertEqual(localized, "The next winning Pick 3 numbers are 1 2 3.")
+
+        # Decode response dictionary
+        resp = tokenizer.decode_response([4, 5, 6], draw_type="Day")
+        self.assertEqual(resp["primary"], "The next winning Pick 3 numbers are 4 5 6.")
+        self.assertIn("4-5-6", resp["box_permutations"])
+
+        # Decode through Pick3HFHub helper
+        hub_resp = Pick3HFHub.decode_response_text([7, 8, 9], draw_type="Night")
+        self.assertEqual(hub_resp, "The next winning Pick 3 numbers are 7 8 9.")
+
+        # Test mapping integer IDs back to label names using model.config.id2label
+        labels = tokenizer.decode_ids_to_labels([11, 13, 1, 2, 3, 15, 16, 14])
+        self.assertEqual(labels, ["<BOS>", "<DAY>", "1", "2", "3", "<SEP>", "<PRED>", "<NIGHT>"])
+
+        # Test skipping special tokens
+        digits_only = tokenizer.decode_ids_to_labels([11, 13, 1, 2, 3, 15, 16, 14], skip_special_tokens=True)
+        self.assertEqual(digits_only, ["1", "2", "3"])
+
+        # Test hub decode_ids_to_labels
+        hub_labels = Pick3HFHub.decode_ids_to_labels([1, 2, 3])
+        self.assertEqual(hub_labels, ["1", "2", "3"])
+
+        # Test hub decode with continuous stream
+        raw_stream = "6 5 2 4 1 3 0 3 0 4 1 3 6 5 2 0 5 6 1 1 8 6 6 6 0 3 2 4 6 2 1"
+        hub_text = Pick3HFHub.decode_response_text(raw_stream, draw_type="Night")
+        self.assertEqual(hub_text, "The next winning Pick 3 numbers are 6 5 2.")
+        hub_dict = Pick3HFHub.decode_response(raw_stream, draw_type="Night")
+        self.assertEqual(hub_dict["primary"], "The next winning Pick 3 numbers are 6 5 2.")
+        self.assertIn("4 1 3", hub_dict["alternatives"])
+
+        # Test creating oMLX client via hub
+        omlx_client = Pick3HFHub.create_omlx_client(base_url="http://localhost:8000/v1")
+        self.assertEqual(omlx_client.base_url, "http://localhost:8000/v1")
+        self.assertEqual(omlx_client.model_name, "pick3_llm_model")
+        parsed_stream = omlx_client.parse_response_text(raw_stream, draw_type="Night")
+        self.assertEqual(parsed_stream, "The next winning Pick 3 numbers are 6 5 2.")
+
+    @unittest.skipIf(mx is None, "MLX is not installed")
+    def test_mlx_generate_response_text(self):
+        config = Pick3LLMConfig(vocab_size=17, max_seq_len=32, n_embd=16, n_head=2, n_layer=1)
+        model = Pick3LLM(config)
+        prompt = [11, 13, 1, 2, 3, 15, 16, 14]
+        resp_text = model.generate_response_text(prompt_tokens=prompt, draw_type="Night")
+        self.assertTrue(resp_text.startswith("The next winning Pick 3 numbers are"))
+
+        loc_dict = model.generate_localized_prediction(prompt_tokens=prompt, draw_type="Night")
+        self.assertIn("primary", loc_dict)
+        self.assertIn("alternatives", loc_dict)
+
+        # Test model.decode_ids_to_labels using model.config.id2label
+        mapped_labels = model.decode_ids_to_labels([1, 2, 3])
+        self.assertEqual(mapped_labels, ["1", "2", "3"])
+        self.assertEqual(model.id2label[1], "1")
+        self.assertEqual(model.label2id["1"], 1)
+
     def test_cli_execution(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        script_path = repo_root / "pick3_hf_model.py"
+        if not script_path.exists():
+            script_path = repo_root / "idaho" / "pick3" / "pick3_hf_model.py"
+
         with tempfile.TemporaryDirectory() as tmp_dir:
             model_dir = Path(tmp_dir) / "cli_model"
             model_dir.mkdir()
@@ -262,20 +383,20 @@ class TestPick3HFModel(unittest.TestCase):
 
             cmd = [
                 sys.executable,
-                "pick3_hf_model.py",
+                str(script_path),
                 "--help",
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(repo_root))
             self.assertEqual(res.returncode, 0, f"CLI help error: {res.stderr}")
             self.assertIn("Hugging Face Model & Hub Management Tool", res.stdout)
 
             # Test resolving existing local model dir
             cmd_local = [
                 sys.executable,
-                "pick3_hf_model.py",
+                str(script_path),
                 "--hf-repo", str(model_dir),
             ]
-            res_local = subprocess.run(cmd_local, capture_output=True, text=True)
+            res_local = subprocess.run(cmd_local, capture_output=True, text=True, cwd=str(repo_root))
             self.assertEqual(res_local.returncode, 0, f"CLI local error: {res_local.stderr}")
             self.assertIn(str(model_dir), res_local.stdout)
 

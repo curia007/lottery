@@ -143,13 +143,14 @@ model.eval()
 
 DEFAULT_CHAT_TEMPLATE: str = (
     "{% for message in messages %}"
-    "{% if loop.first and messages[0]['role'] != 'system' %}{{ '<BOS>' }}{% endif %}"
-    "{% if message['role'] == 'system' %}{{ '<BOS>' + message['content'].strip() + ' ' }}"
-    "{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ message['content'].strip() + ' <PRED>' }}"
-    "{% elif message['role'] == 'assistant' %}{{ ' ' + message['content'].strip() + ' <EOS>' }}"
+    "{% set content = (message['content'] if message['content'] is not none else '') | trim %}"
+    "{% if loop.first and message['role'] != 'system' %}{{ '<BOS>' }}{% endif %}"
+    "{% if message['role'] == 'system' %}{% if content %}{{ '<BOS>' ~ content ~ ' ' }}{% else %}{{ '<BOS>' }}{% endif %}"
+    "{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ content ~ ' <PRED>' }}"
+    "{% elif message['role'] == 'assistant' %}{% if content %}{{ ' ' ~ content ~ ' <EOS>' }}{% endif %}"
     "{% endif %}"
     "{% endfor %}"
-    "{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{ ' ' }}{% endif %}"
+    "{% if add_generation_prompt and (messages[-1]['role'] != 'assistant' or not (messages[-1]['content'] if messages[-1]['content'] is not none else '')) %}{{ ' ' }}{% endif %}"
 )
 
 
@@ -265,6 +266,17 @@ def ensure_hf_assets(
         with tok_cfg_path.open("w", encoding="utf-8") as f:
             json.dump(tok_cfg, f, indent=2)
 
+    with tok_cfg_path.open("r", encoding="utf-8") as f:
+        tok_cfg = json.load(f)
+    added_tokens_decoder = tok_cfg.setdefault("added_tokens_decoder", {})
+    for token_id in ("13", "14", "15", "16"):
+        token_data = added_tokens_decoder.get(token_id)
+        if token_data is not None:
+            token_data["special"] = False
+    tok_cfg["special_tokens"] = ["<PAD>", "<BOS>", "<EOS>", "[UNK]", "<UNK>"]
+    with tok_cfg_path.open("w", encoding="utf-8") as f:
+        json.dump(tok_cfg, f, indent=2)
+
     tok_json_path = src_dir / "tokenizer.json"
     if not tok_json_path.exists():
         vocab_dict = {str(i): i for i in range(10)}
@@ -309,6 +321,11 @@ def ensure_hf_assets(
         with tok_json_path.open("w", encoding="utf-8") as f:
             json.dump(tok_json, f, indent=2)
 
+    from idaho.pick3.pick3_hf_model import Pick3HFHub
+
+    with tok_json_path.open("w", encoding="utf-8") as f:
+        json.dump(Pick3HFHub.get_fast_tokenizer_dict(), f, indent=2)
+
     # 4. Vocab dictionary
     vocab_path = src_dir / "vocab.json"
     if not vocab_path.exists():
@@ -335,10 +352,20 @@ def ensure_hf_assets(
             "eos_token": "<EOS>",
             "pad_token": "<PAD>",
             "unk_token": "[UNK]",
-            "additional_special_tokens": ["<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "<UNK>"],
+            "additional_special_tokens": ["<UNK>"],
         }
         with tokens_map_path.open("w", encoding="utf-8") as f:
             json.dump(special_tokens_map, f, indent=2)
+
+    with tokens_map_path.open("r", encoding="utf-8") as f:
+        special_tokens_map = json.load(f)
+    special_tokens_map["additional_special_tokens"] = [
+        token
+        for token in special_tokens_map.get("additional_special_tokens", [])
+        if token not in {"<DAY>", "<NIGHT>", "<SEP>", "<PRED>"}
+    ]
+    with tokens_map_path.open("w", encoding="utf-8") as f:
+        json.dump(special_tokens_map, f, indent=2)
 
     # 6. Model Card README.md
     readme_path = src_dir / "README.md"
@@ -472,7 +499,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     # Resolve model directory
     model_path = Path(args.model_dir)
     if not model_path.exists():
-        fallback_path = Path("idaho/pick3") / args.model_dir
+        fallback_path = Path("") / args.model_dir
         if fallback_path.exists():
             model_path = fallback_path
 

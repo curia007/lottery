@@ -55,6 +55,47 @@ except ImportError:
 # Hugging Face Model Configuration
 # ==============================================================================
 
+DEFAULT_ID2LABEL: Dict[int, str] = {
+    0: "0",
+    1: "1",
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5",
+    6: "6",
+    7: "7",
+    8: "8",
+    9: "9",
+    10: "<PAD>",
+    11: "<BOS>",
+    12: "<EOS>",
+    13: "<DAY>",
+    14: "<NIGHT>",
+    15: "<SEP>",
+    16: "<PRED>",
+}
+
+DEFAULT_LABEL2ID: Dict[str, int] = {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "<PAD>": 10,
+    "<BOS>": 11,
+    "<EOS>": 12,
+    "<DAY>": 13,
+    "<NIGHT>": 14,
+    "<SEP>": 15,
+    "<PRED>": 16,
+}
+
+
 @dataclass
 class Pick3HFConfig:
     """
@@ -78,6 +119,8 @@ class Pick3HFConfig:
     pad_token_id: int = 10
     bos_token_id: int = 11
     eos_token_id: int = 12
+    id2label: Dict[int, str] = field(default_factory=lambda: dict(DEFAULT_ID2LABEL))
+    label2id: Dict[str, int] = field(default_factory=lambda: dict(DEFAULT_LABEL2ID))
     architectures: List[str] = field(default_factory=lambda: ["GPT2LMHeadModel", "Pick3ForCausalLM"])
     transformers_version: str = "4.45.0"
     auto_map: Dict[str, str] = field(
@@ -91,6 +134,18 @@ class Pick3HFConfig:
     def register_for_auto_class(cls, auto_class: str = "AutoConfig") -> None:
         """Compatibility method for Hugging Face dynamic auto class registration."""
         pass
+
+    def map_id_to_label(self, token_id: Union[int, str]) -> str:
+        """Maps an integer token ID to its corresponding label name using id2label."""
+        try:
+            int_id = int(token_id)
+        except (ValueError, TypeError):
+            return str(token_id)
+        return self.id2label.get(int_id, self.id2label.get(str(int_id), str(token_id)))
+
+    def map_ids_to_labels(self, token_ids: Sequence[Union[int, str]]) -> List[str]:
+        """Maps a sequence of integer token IDs to label names using id2label."""
+        return [self.map_id_to_label(tid) for tid in token_ids]
 
     # Aliases for compatibility with MLX Pick3LLMConfig
     @property
@@ -132,6 +187,8 @@ class Pick3HFConfig:
         data["attn_pdrop"] = self.attn_pdrop
         data["scale_attn_weights"] = self.scale_attn_weights
         data["use_cache"] = self.use_cache
+        data["id2label"] = {str(k): str(v) for k, v in self.id2label.items()}
+        data["label2id"] = {str(k): int(v) for k, v in self.label2id.items()}
         # Cross-framework and MLX naming aliases
         data["max_seq_len"] = self.max_position_embeddings
         data["max_position_embeddings"] = self.max_position_embeddings
@@ -199,6 +256,10 @@ class Pick3HFConfig:
             cfg.bos_token_id = int(data["bos_token_id"])
         if "eos_token_id" in data:
             cfg.eos_token_id = int(data["eos_token_id"])
+        if "id2label" in data and isinstance(data["id2label"], dict):
+            cfg.id2label = {int(k): str(v) for k, v in data["id2label"].items()}
+        if "label2id" in data and isinstance(data["label2id"], dict):
+            cfg.label2id = {str(k): int(v) for k, v in data["label2id"].items()}
         if "architectures" in data and isinstance(data["architectures"], list):
             cfg.architectures = [str(a) for a in data["architectures"]]
         return cfg
@@ -230,6 +291,148 @@ class Pick3HFHub:
     """
 
     DEFAULT_CACHE_DIR = Path.home() / ".cache" / "lottery_ai" / "hub"
+
+    @classmethod
+    def decode_response_text(
+        cls,
+        token_ids: Any,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        prob_matrix: Optional[Any] = None,
+        draw_type: Optional[str] = "Night",
+        include_narrative: bool = False,
+    ) -> str:
+        """
+        Decodes a token sequence, string, or tensor into localized natural language prediction text.
+        e.g., 'The next winning Pick 3 numbers are 1 2 3.'
+        """
+        from idaho.pick3.pick3_llm_ticket_model import Pick3Tokenizer
+        tok = Pick3Tokenizer()
+        return tok.decode_response_text(
+            token_ids=token_ids,
+            alternative_tickets=alternative_tickets,
+            prob_matrix=prob_matrix,
+            draw_type=draw_type,
+            include_narrative=include_narrative,
+        )
+
+    @classmethod
+    def decode_response(
+        cls,
+        token_ids: Any,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        prob_matrix: Optional[Any] = None,
+        draw_type: Optional[str] = "Night",
+    ) -> Dict[str, str]:
+        """
+        Decodes a token sequence, string, or tensor into a rich localized natural language response dictionary.
+        """
+        from idaho.pick3.pick3_llm_ticket_model import Pick3Tokenizer
+        tok = Pick3Tokenizer()
+        return tok.decode_response(
+            token_ids=token_ids,
+            alternative_tickets=alternative_tickets,
+            prob_matrix=prob_matrix,
+            draw_type=draw_type,
+        )
+
+    @classmethod
+    def decode_all_draw_digits(
+        cls,
+        token_ids: Any,
+    ) -> List[Tuple[int, int, int]]:
+        """
+        Extracts all 3-digit draw triplets from any token sequence, string, or tensor.
+        """
+        from idaho.pick3.pick3_llm_ticket_model import Pick3Tokenizer
+        tok = Pick3Tokenizer()
+        return tok.decode_all_draw_digits(token_ids)
+
+    @classmethod
+    def decode_ids_to_labels(
+        cls,
+        token_ids: Any,
+        config: Optional[Union[Pick3HFConfig, Dict[str, Any]]] = None,
+        skip_special_tokens: bool = False,
+    ) -> Union[str, List[Any]]:
+        """
+        Maps integer token IDs back to their label names using config.id2label.
+        """
+        if config is not None:
+            if isinstance(config, dict):
+                raw_id2label = config.get("id2label", DEFAULT_ID2LABEL)
+            else:
+                raw_id2label = getattr(config, "id2label", DEFAULT_ID2LABEL)
+            id2label = {int(k): str(v) for k, v in raw_id2label.items()}
+        else:
+            id2label = dict(DEFAULT_ID2LABEL)
+
+        special_tokens = {"<PAD>", "<BOS>", "<EOS>", "<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "[UNK]", "<UNK>"}
+
+        def _map_single_id(tid: Any) -> str:
+            try:
+                int_id = int(tid)
+            except (ValueError, TypeError):
+                return str(tid)
+            return id2label.get(int_id, str(tid))
+
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+
+        if isinstance(token_ids, (int,)):
+            lbl = _map_single_id(token_ids)
+            if skip_special_tokens and lbl in special_tokens:
+                return ""
+            return lbl
+
+        if isinstance(token_ids, (list, tuple)):
+            if not token_ids:
+                return []
+            if isinstance(token_ids[0], (list, tuple)):
+                return [cls.decode_ids_to_labels(seq, config=config, skip_special_tokens=skip_special_tokens) for seq in token_ids]
+            labels = [_map_single_id(tid) for tid in token_ids]
+            if skip_special_tokens:
+                labels = [l for l in labels if l not in special_tokens]
+            return labels
+
+        return _map_single_id(token_ids)
+
+    @classmethod
+    def format_localized_response(
+        cls,
+        predicted_digits: Sequence[int],
+        prob_matrix: Optional[Any] = None,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        draw_type: Optional[str] = "Night",
+    ) -> Dict[str, str]:
+        """
+        Formats predicted lottery digits into a structured localized response dictionary.
+        """
+        from idaho.pick3.pick3_llm_ticket_model import format_pick3_localized_response
+        return format_pick3_localized_response(
+            predicted_digits=predicted_digits,
+            prob_matrix=prob_matrix,
+            alternative_tickets=alternative_tickets,
+            draw_type=draw_type,
+        )
+
+    @classmethod
+    def create_omlx_client(
+        cls,
+        base_url: str = "http://localhost:8000/v1",
+        model_name: str = "pick3_llm_model",
+        timeout: float = 15.0,
+        api_key: Optional[str] = None,
+    ) -> Any:
+        """
+        Instantiates an OMLXPick3Client for querying local oMLX / mlx-lm model endpoints.
+        """
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+        return OMLXPick3Client(
+            base_url=base_url,
+            model_name=model_name,
+            timeout=timeout,
+            api_key=api_key,
+        )
 
     @staticmethod
     def is_hf_repo_id(repo_id_or_path: Union[str, Path]) -> bool:
@@ -476,13 +679,14 @@ model.eval()
 
     DEFAULT_CHAT_TEMPLATE: str = (
         "{% for message in messages %}"
-        "{% if loop.first and messages[0]['role'] != 'system' %}{{ '<BOS>' }}{% endif %}"
-        "{% if message['role'] == 'system' %}{{ '<BOS>' + message['content'].strip() + ' ' }}"
-        "{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ message['content'].strip() + ' <PRED>' }}"
-        "{% elif message['role'] == 'assistant' %}{{ ' ' + message['content'].strip() + ' <EOS>' }}"
+        "{% set content = (message['content'] if message['content'] is not none else '') | trim %}"
+        "{% if loop.first and message['role'] != 'system' %}{{ '<BOS>' }}{% endif %}"
+        "{% if message['role'] == 'system' %}{% if content %}{{ '<BOS>' ~ content ~ ' ' }}{% else %}{{ '<BOS>' }}{% endif %}"
+        "{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ content ~ ' <PRED>' }}"
+        "{% elif message['role'] == 'assistant' %}{% if content %}{{ ' ' ~ content ~ ' <EOS>' }}{% endif %}"
         "{% endif %}"
         "{% endfor %}"
-        "{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{ ' ' }}{% endif %}"
+        "{% if add_generation_prompt and (messages[-1]['role'] != 'assistant' or not (messages[-1]['content'] if messages[-1]['content'] is not none else '')) %}{{ ' ' }}{% endif %}"
     )
 
     @classmethod
@@ -508,10 +712,10 @@ model.eval()
                 {"id": 10, "content": "<PAD>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
                 {"id": 11, "content": "<BOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
                 {"id": 12, "content": "<EOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+                {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+                {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+                {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+                {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
                 {"id": 10, "content": "[UNK]", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
                 {"id": 10, "content": "<UNK>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
             ],
@@ -520,7 +724,20 @@ model.eval()
                 "type": "WhitespaceSplit"
             },
             "post_processor": None,
-            "decoder": None,
+            "decoder": {
+                "type": "Sequence",
+                "decoders": [
+                    *[
+                        {"type": "Replace", "pattern": {"String": str(digit)}, "content": f" {digit}"}
+                        for digit in range(10)
+                    ],
+                    {"type": "Replace", "pattern": {"String": "<DAY>"}, "content": "Day draw:"},
+                    {"type": "Replace", "pattern": {"String": "<NIGHT>"}, "content": "Night draw:"},
+                    {"type": "Replace", "pattern": {"String": "<SEP>"}, "content": ". "},
+                    {"type": "Replace", "pattern": {"String": "<PRED>"}, "content": "Prediction: "},
+                    {"type": "Replace", "pattern": {"String": "<EOS>"}, "content": "."},
+                ],
+            },
             "model": {
                 "type": "WordLevel",
                 "vocab": vocab_dict,
@@ -574,12 +791,12 @@ model.eval()
                 "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
                 "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
                 "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
             },
-            "special_tokens": ["<PAD>", "<BOS>", "<EOS>", "<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "[UNK]", "<UNK>"],
+            "special_tokens": ["<PAD>", "<BOS>", "<EOS>", "[UNK]", "<UNK>"],
         }
         with (out_dir / "tokenizer_config.json").open("w", encoding="utf-8") as f:
             json.dump(tok_cfg, f, indent=2)
@@ -609,7 +826,7 @@ model.eval()
             "eos_token": "<EOS>",
             "pad_token": "<PAD>",
             "unk_token": "[UNK]",
-            "additional_special_tokens": ["<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "<UNK>"],
+            "additional_special_tokens": ["<UNK>"],
         }
         with (out_dir / "special_tokens_map.json").open("w", encoding="utf-8") as f:
             json.dump(special_tokens_map, f, indent=2)
@@ -753,6 +970,62 @@ if torch is not None and nn is not None:
             self.ln_f = nn.LayerNorm(self.config.hidden_size, eps=getattr(self.config, "layer_norm_epsilon", 1e-5))
             self.lm_head = nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
 
+        @property
+        def id2label(self) -> Dict[int, str]:
+            """Returns the integer ID to label name mapping from model configuration."""
+            raw = getattr(self.config, "id2label", DEFAULT_ID2LABEL)
+            if isinstance(raw, dict):
+                return {int(k): str(v) for k, v in raw.items()}
+            return dict(DEFAULT_ID2LABEL)
+
+        @property
+        def label2id(self) -> Dict[str, int]:
+            """Returns the label name to integer ID mapping from model configuration."""
+            raw = getattr(self.config, "label2id", DEFAULT_LABEL2ID)
+            if isinstance(raw, dict):
+                return {str(k): int(v) for k, v in raw.items()}
+            return dict(DEFAULT_LABEL2ID)
+
+        def decode_ids_to_labels(
+            self,
+            token_ids: Any,
+            skip_special_tokens: bool = False,
+        ) -> Union[str, List[Any]]:
+            """
+            Maps integer IDs back to label names using model.config.id2label.
+            Supports single integers, lists, tuples, PyTorch tensors, and NumPy arrays.
+            """
+            id2label = self.id2label
+            special_tokens = {"<PAD>", "<BOS>", "<EOS>", "<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "[UNK]", "<UNK>"}
+
+            def _map_single_id(tid: Any) -> str:
+                try:
+                    int_id = int(tid)
+                except (ValueError, TypeError):
+                    return str(tid)
+                return id2label.get(int_id, str(tid))
+
+            if hasattr(token_ids, "tolist"):
+                token_ids = token_ids.tolist()
+
+            if isinstance(token_ids, (int,)):
+                lbl = _map_single_id(token_ids)
+                if skip_special_tokens and lbl in special_tokens:
+                    return ""
+                return lbl
+
+            if isinstance(token_ids, (list, tuple)):
+                if not token_ids:
+                    return []
+                if isinstance(token_ids[0], (list, tuple)):
+                    return [self.decode_ids_to_labels(seq, skip_special_tokens=skip_special_tokens) for seq in token_ids]
+                labels = [_map_single_id(tid) for tid in token_ids]
+                if skip_special_tokens:
+                    labels = [l for l in labels if l not in special_tokens]
+                return labels
+
+            return _map_single_id(token_ids)
+
         def forward(
             self,
             input_ids: Optional[torch.Tensor] = None,
@@ -852,6 +1125,83 @@ if torch is not None and nn is not None:
                 else:
                     pt_state[k] = torch.from_numpy(arr)
             self.load_state_dict(pt_state, strict=False)
+
+        def generate_response_text(
+            self,
+            prompt_tokens: Optional[Sequence[int]] = None,
+            history_draws: Optional[Sequence[Dict[str, Any]]] = None,
+            draw_type: str = "Night",
+            temperature: float = 0.8,
+            include_narrative: bool = False,
+        ) -> str:
+            """
+            Generates next Pick 3 draw digits and decodes into localized natural language text.
+            e.g., 'The next winning Pick 3 numbers are 1 2 3.'
+            """
+            from idaho.pick3.pick3_llm_ticket_model import Pick3Tokenizer
+            tokenizer = Pick3Tokenizer()
+            if prompt_tokens is None:
+                if history_draws is None:
+                    raise ValueError("Either prompt_tokens or history_draws must be provided")
+                prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
+
+            curr_input = list(prompt_tokens)
+            gen_tokens = []
+            self.eval()
+            with torch.no_grad():
+                for _ in range(3):
+                    inp = torch.tensor([curr_input], dtype=torch.long)
+                    out = self(inp)
+                    step_logits = out["logits"][0, -1, :10]
+                    if temperature <= 0.01:
+                        next_tok = int(torch.argmax(step_logits).item())
+                    else:
+                        probs = F.softmax(step_logits / max(temperature, 1e-4), dim=-1)
+                        next_tok = int(torch.multinomial(probs, num_samples=1).item())
+                    gen_tokens.append(next_tok)
+                    curr_input.append(next_tok)
+
+            return tokenizer.decode_response_text(
+                gen_tokens,
+                draw_type=draw_type,
+                include_narrative=include_narrative,
+            )
+
+        def generate_localized_prediction(
+            self,
+            prompt_tokens: Optional[Sequence[int]] = None,
+            history_draws: Optional[Sequence[Dict[str, Any]]] = None,
+            draw_type: str = "Night",
+            temperature: float = 0.8,
+        ) -> Dict[str, str]:
+            """Generates localized prediction dictionary with primary, alternatives, and permutations."""
+            from idaho.pick3.pick3_llm_ticket_model import Pick3Tokenizer
+            tokenizer = Pick3Tokenizer()
+            if prompt_tokens is None:
+                if history_draws is None:
+                    raise ValueError("Either prompt_tokens or history_draws must be provided")
+                prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
+
+            curr_input = list(prompt_tokens)
+            gen_tokens = []
+            self.eval()
+            with torch.no_grad():
+                for _ in range(3):
+                    inp = torch.tensor([curr_input], dtype=torch.long)
+                    out = self(inp)
+                    step_logits = out["logits"][0, -1, :10]
+                    if temperature <= 0.01:
+                        next_tok = int(torch.argmax(step_logits).item())
+                    else:
+                        probs = F.softmax(step_logits / max(temperature, 1e-4), dim=-1)
+                        next_tok = int(torch.multinomial(probs, num_samples=1).item())
+                    gen_tokens.append(next_tok)
+                    curr_input.append(next_tok)
+
+            return tokenizer.decode_response(
+                gen_tokens,
+                draw_type=draw_type,
+            )
 
 else:
     # Minimal stub when PyTorch is not available

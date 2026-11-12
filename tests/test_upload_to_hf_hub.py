@@ -69,6 +69,19 @@ class TestUploadToHFHub(unittest.TestCase):
             self.assertEqual(tok_cfg.get("tokenizer_class"), "PreTrainedTokenizerFast")
             self.assertIn("chat_template", tok_cfg)
             self.assertIn("<BOS>", tok_cfg["chat_template"])
+            self.assertFalse(tok_cfg["added_tokens_decoder"]["13"]["special"])
+            self.assertFalse(tok_cfg["added_tokens_decoder"]["14"]["special"])
+            self.assertFalse(tok_cfg["added_tokens_decoder"]["15"]["special"])
+            self.assertFalse(tok_cfg["added_tokens_decoder"]["16"]["special"])
+
+            with (model_dir / "tokenizer.json").open("r", encoding="utf-8") as f:
+                tok_json = json.load(f)
+            self.assertEqual(tok_json["decoder"]["type"], "Sequence")
+            self.assertFalse(tok_json["added_tokens"][3]["special"])
+
+            with (model_dir / "special_tokens_map.json").open("r", encoding="utf-8") as f:
+                tokens_map = json.load(f)
+            self.assertNotIn("<DAY>", tokens_map["additional_special_tokens"])
 
             with (model_dir / "generation_config.json").open("r", encoding="utf-8") as f:
                 gen_cfg = json.load(f)

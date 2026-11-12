@@ -37,7 +37,7 @@
       "lstrip": false,
       "rstrip": false,
       "normalized": false,
-      "special": true
+      "special": false
     },
     {
       "id": 14,
@@ -46,7 +46,7 @@
       "lstrip": false,
       "rstrip": false,
       "normalized": false,
-      "special": true
+      "special": false
     },
     {
       "id": 15,
@@ -55,7 +55,7 @@
       "lstrip": false,
       "rstrip": false,
       "normalized": false,
-      "special": true
+      "special": false
     },
     {
       "id": 16,
@@ -64,7 +64,7 @@
       "lstrip": false,
       "rstrip": false,
       "normalized": false,
-      "special": true
+      "special": false
     },
     {
       "id": 10,
@@ -90,7 +90,116 @@
     "type": "WhitespaceSplit"
   },
   "post_processor": null,
-  "decoder": null,
+  "decoder": {
+    "type": "Sequence",
+    "decoders": [
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "0"
+        },
+        "content": " 0"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "1"
+        },
+        "content": " 1"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "2"
+        },
+        "content": " 2"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "3"
+        },
+        "content": " 3"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "4"
+        },
+        "content": " 4"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "5"
+        },
+        "content": " 5"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "6"
+        },
+        "content": " 6"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "7"
+        },
+        "content": " 7"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "8"
+        },
+        "content": " 8"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "9"
+        },
+        "content": " 9"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<DAY>"
+        },
+        "content": "Day draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<NIGHT>"
+        },
+        "content": "Night draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<SEP>"
+        },
+        "content": ". "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<PRED>"
+        },
+        "content": "Prediction: "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<EOS>"
+        },
+        "content": "."
+      }
+    ]
+  },
   "model": {
     "type": "WordLevel",
     "vocab": {

@@ -9,7 +9,7 @@ Key capabilities include:
 * **Automated Web Scraping:** Real-time historical draw scraping and CSV dataset generation across all games.
 * **Apple Silicon MLX Deep Learning:** High-performance neural network architectures for probability distribution estimation and ticket scoring.
 * **Autoregressive Transformer LLMs:** Fine-tune causal Transformer models on sequential lottery draw histories with local `.safetensors` model persistence and remote model loading.
-* **Unified Multi-Game Winner Predictor:** Quick-run unified CLI tool (`next_winners.py`) for multi-game ticket ranking.
+* **Unified Multi-Game Winner Predictor:** Quick-run unified CLI tool (`idaho/pick3/next_winners.py`) for multi-game ticket ranking.
 * **Specialized Ball Analyzers:** Deep statistical and neural models for Millionaire Ball (Extra 1–5), Mega Ball (1–24), and Star Ball (1–10).
 * **Pattern & Tensor Dynamics:** Intra-draw consecutive runs, back-to-back draw repeats, odd/even and high/low distributions, and pair co-occurrence matrices.
 * **Strict Duplicate Protection:** Guaranteed unique white ball generation and deduplicated ticket candidate pools.
@@ -145,7 +145,7 @@ pip install mlx
 
 # Unified Multi-Game Winner Predictor
 
-Use `next_winners.py` at the project root as a quick unified interface to train and rank the next best possible winning tickets across games using MLX neural networks and statistical gap analysis:
+Use `idaho/pick3/next_winners.py` at the project root as a quick unified interface to train and rank the next best possible winning tickets across games using MLX neural networks and statistical gap analysis:
 
 ```bash
 # Idaho Cash (default: 5 tickets)

@@ -112,7 +112,18 @@ def normalize_draw(value: str) -> str:
 def load_pick3_csv(csv_path: str | Path, draw: str) -> pd.DataFrame:
     path = Path(csv_path)
     if not path.exists():
-        raise FileNotFoundError(f"CSV file not found: {path}")
+        candidates = [
+            Path("idaho/pick3") / path,
+            Path(__file__).resolve().parent / "data" / path.name,
+            Path("idaho/pick3/data") / path.name,
+            Path("data") / path.name,
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                path = candidate
+                break
+        else:
+            raise FileNotFoundError(f"CSV file not found: {path}")
 
     df = pd.read_csv(path)
 

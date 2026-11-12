@@ -75,10 +75,21 @@ def parse_date(value: str) -> datetime:
 def load_rows(csv_path: str | Path) -> List[Pick3Row]:
     csv_path = Path(csv_path)
     if not csv_path.exists():
-        raise FileNotFoundError(
-            f"CSV file not found: {csv_path}\n"
-            "Run scrape_idaho_pick3.py first, or pass --csv path/to/file.csv"
-        )
+        candidates = [
+            Path("idaho/pick3") / csv_path,
+            Path(__file__).resolve().parent / "data" / csv_path.name,
+            Path("idaho/pick3/data") / csv_path.name,
+            Path("data") / csv_path.name,
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                csv_path = candidate
+                break
+        else:
+            raise FileNotFoundError(
+                f"CSV file not found: {csv_path}\n"
+                "Run scrape_idaho_pick3.py first, or pass --csv path/to/file.csv"
+            )
 
     rows: List[Pick3Row] = []
     with csv_path.open("r", newline="", encoding="utf-8-sig") as f:

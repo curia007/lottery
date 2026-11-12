@@ -471,6 +471,18 @@ if gr is not None:
 
 
 if __name__ == "__main__":
-    if demo is None:
-        demo = build_demo()
-    demo.launch(theme=gr.themes.Soft(), share=True)
+    if gr is not None:
+        if demo is None:
+            demo = build_demo()
+        demo.launch(theme=gr.themes.Soft(), share=True)
+    else:
+        print("[pick3_process] Gradio not installed. Generating report via CLI interface...")
+        report_text, df_probs, excel_file = process_interface(
+            text_input=default_history_string,
+            file_input=None,
+            temperature=0.8,
+            top_k=5,
+            top_p=0.9,
+        )
+        print(report_text)
+        print(f"\n[pick3_process] Report exported to: {excel_file}")

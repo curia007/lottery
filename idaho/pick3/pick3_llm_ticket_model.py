@@ -34,7 +34,7 @@ import sys
 import urllib.error
 import urllib.request
 from collections import Counter
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
@@ -66,6 +66,46 @@ TicketType = Literal["exact", "any", "straight_any", "6-way", "3-way"]
 DEFAULT_CSV_PATH = "idaho/pick3/data/idaho_pick3_history.csv"
 DEFAULT_MODEL_DIR = "models/pick3_llm_model"
 DEFAULT_REMOTE_MODEL = "remote://lottery-ai/pick3-transformer-base"
+
+DEFAULT_ID2LABEL: Dict[int, str] = {
+    0: "0",
+    1: "1",
+    2: "2",
+    3: "3",
+    4: "4",
+    5: "5",
+    6: "6",
+    7: "7",
+    8: "8",
+    9: "9",
+    10: "<PAD>",
+    11: "<BOS>",
+    12: "<EOS>",
+    13: "<DAY>",
+    14: "<NIGHT>",
+    15: "<SEP>",
+    16: "<PRED>",
+}
+
+DEFAULT_LABEL2ID: Dict[str, int] = {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+    "5": 5,
+    "6": 6,
+    "7": 7,
+    "8": 8,
+    "9": 9,
+    "<PAD>": 10,
+    "<BOS>": 11,
+    "<EOS>": 12,
+    "<DAY>": 13,
+    "<NIGHT>": 14,
+    "<SEP>": 15,
+    "<PRED>": 16,
+}
 
 
 # ==============================================================================
@@ -107,6 +147,47 @@ class Pick3Tokenizer:
         self.vocab = self.digit_tokens + self.special_tokens
         self.token_to_id = {t: i for i, t in enumerate(self.vocab)}
         self.id_to_token = {i: t for i, t in enumerate(self.vocab)}
+        self.id2label = dict(DEFAULT_ID2LABEL)
+        self.label2id = dict(DEFAULT_LABEL2ID)
+
+    def decode_ids_to_labels(
+        self,
+        token_ids: Any,
+        skip_special_tokens: bool = False,
+    ) -> Union[str, List[Any]]:
+        """
+        Maps integer IDs back to label names using id2label.
+        Supports single integers, lists, tuples, and NumPy / MLX arrays.
+        """
+        special_tokens = set(self.special_tokens) | {"[UNK]", "<UNK>"}
+
+        def _map_single(tid: Any) -> str:
+            try:
+                int_id = int(tid)
+            except (ValueError, TypeError):
+                return str(tid)
+            return self.id2label.get(int_id, str(tid))
+
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+
+        if isinstance(token_ids, (int, np.integer)):
+            lbl = _map_single(token_ids)
+            if skip_special_tokens and lbl in special_tokens:
+                return ""
+            return lbl
+
+        if isinstance(token_ids, (list, tuple)):
+            if not token_ids:
+                return []
+            if isinstance(token_ids[0], (list, tuple)):
+                return [self.decode_ids_to_labels(seq, skip_special_tokens=skip_special_tokens) for seq in token_ids]
+            labels = [_map_single(tid) for tid in token_ids]
+            if skip_special_tokens:
+                labels = [l for l in labels if l not in special_tokens]
+            return labels
+
+        return _map_single(token_ids)
 
     @property
     def vocab_size(self) -> int:
@@ -144,8 +225,146 @@ class Pick3Tokenizer:
         draw_tag = self.day_id if draw_type.strip().lower().startswith("day") else self.night_id
         return [draw_tag, int(d1), int(d2), int(d3)]
 
-    def decode(self, token_ids: Sequence[int]) -> str:
-        return " ".join(self.id_to_token.get(int(i), "<UNK>") for i in token_ids)
+    def encode_history_prompt(
+        self,
+        history_draws: Sequence[Dict[str, Any]],
+        target_draw_type: str = "Night",
+    ) -> List[int]:
+        """Encodes historical context draws leading up to the target draw conditioning prompt."""
+        tokens: List[int] = [self.bos_id]
+        for d in history_draws:
+            tokens.extend(self.encode_draw(d["draw"], d["num1"], d["num2"], d["num3"]))
+            tokens.append(self.sep_id)
+
+        target_tag = self.day_id if str(target_draw_type).strip().lower().startswith("day") else self.night_id
+        tokens.extend([self.pred_id, target_tag])
+        return tokens
+
+    def _extract_digits_from_input(self, token_ids: Any) -> List[int]:
+        """Extracts a flat list of integer digits 0-9 from lists, strings, tensors, or arrays."""
+        if token_ids is None:
+            return []
+        if isinstance(token_ids, str):
+            return [int(c) for c in token_ids if c.isdigit()]
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+        if isinstance(token_ids, (int, np.integer)):
+            if 0 <= int(token_ids) <= 9:
+                return [int(token_ids)]
+            return []
+
+        digits: List[int] = []
+        if isinstance(token_ids, (list, tuple)):
+            for item in token_ids:
+                if isinstance(item, (int, np.integer)) and 0 <= int(item) <= 9:
+                    digits.append(int(item))
+                elif isinstance(item, str) and item.isdigit() and len(item) == 1:
+                    digits.append(int(item))
+                elif isinstance(item, (list, tuple, np.ndarray)) or hasattr(item, "tolist"):
+                    digits.extend(self._extract_digits_from_input(item))
+                elif isinstance(item, str):
+                    digits.extend([int(c) for c in item if c.isdigit()])
+        return digits
+
+    def decode_draw_digits(self, token_ids: Any) -> Optional[Tuple[int, int, int]]:
+        """Extracts the first 3 consecutive numeric digit tokens from a sequence or string."""
+        digits = self._extract_digits_from_input(token_ids)
+        if len(digits) >= 3:
+            return (digits[0], digits[1], digits[2])
+        return None
+
+    def decode_all_draw_digits(self, token_ids: Any) -> List[Tuple[int, int, int]]:
+        """Extracts all non-overlapping 3-digit draw triplets from a sequence or string."""
+        digits = self._extract_digits_from_input(token_ids)
+        triplets: List[Tuple[int, int, int]] = []
+        for i in range(0, len(digits) - 2, 3):
+            triplets.append((digits[i], digits[i + 1], digits[i + 2]))
+        return triplets
+
+    def decode_response(
+        self,
+        token_ids: Any,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        prob_matrix: Optional[np.ndarray] = None,
+        draw_type: Optional[str] = "Night",
+    ) -> Dict[str, str]:
+        """
+        Decodes a token sequence or string into a rich localized natural language response dictionary.
+        Automatically parses secondary 3-digit groups as alternative candidate tickets.
+        """
+        triplets = self.decode_all_draw_digits(token_ids)
+        if not triplets:
+            raw_text = self.decode(token_ids, skip_special_tokens=True) if isinstance(token_ids, (list, tuple)) else str(token_ids)
+            return {
+                "primary": f"Prediction sequence: {raw_text}",
+                "primary_dash": f"Prediction sequence: {raw_text}",
+                "alternatives": "No alternative candidates identified.",
+                "positional_summary": f"Decoded tokens: {raw_text}",
+                "box_permutations": "N/A",
+                "profile": "N/A",
+                "narrative": f"Prediction sequence: {raw_text}",
+                "draw": str(draw_type).capitalize() if draw_type else "Upcoming",
+            }
+        primary_digits = triplets[0]
+        if alternative_tickets is None and len(triplets) > 1:
+            alternative_tickets = triplets[1:]
+
+        return format_pick3_localized_response(
+            predicted_digits=primary_digits,
+            prob_matrix=prob_matrix,
+            alternative_tickets=alternative_tickets,
+            draw_type=draw_type,
+        )
+
+    def decode_response_text(
+        self,
+        token_ids: Any,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        prob_matrix: Optional[np.ndarray] = None,
+        draw_type: Optional[str] = "Night",
+        include_narrative: bool = False,
+    ) -> str:
+        """
+        Decodes a token sequence or string directly into localized natural language prediction text.
+        e.g., 'The next winning Pick 3 numbers are 1 2 3.'
+        """
+        resp = self.decode_response(
+            token_ids=token_ids,
+            alternative_tickets=alternative_tickets,
+            prob_matrix=prob_matrix,
+            draw_type=draw_type,
+        )
+        return resp["narrative"] if include_narrative else resp["primary"]
+
+    def decode(
+        self,
+        token_ids: Any,
+        skip_special_tokens: bool = False,
+        localize: bool = False,
+        alternative_tickets: Optional[Sequence[Any]] = None,
+        prob_matrix: Optional[np.ndarray] = None,
+        draw_type: Optional[str] = "Night",
+        **kwargs,
+    ) -> str:
+        """Converts integer token IDs back to a readable string or localized response text."""
+        if localize:
+            return self.decode_response_text(
+                token_ids=token_ids,
+                alternative_tickets=alternative_tickets,
+                prob_matrix=prob_matrix,
+                draw_type=draw_type,
+            )
+        if isinstance(token_ids, str):
+            return token_ids
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+        result = []
+        for tid in token_ids:
+            tok = self.id_to_token.get(int(tid), "<UNK>")
+            if skip_special_tokens and tok in self.special_tokens:
+                continue
+            result.append(tok)
+        return " ".join(result)
 
     def save_pretrained(self, save_directory: Union[str, Path]) -> Path:
         """Saves tokenizer configurations and fast tokenizer serialization compatible with Hugging Face."""
@@ -168,12 +387,12 @@ class Pick3Tokenizer:
                 "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
                 "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
                 "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
             },
-            "special_tokens": self.special_tokens + ["[UNK]", "<UNK>"],
+            "special_tokens": [self.PAD_TOKEN, self.BOS_TOKEN, self.EOS_TOKEN, "[UNK]", "<UNK>"],
         }
         with (out_dir / "tokenizer_config.json").open("w", encoding="utf-8") as f:
             json.dump(tok_cfg, f, indent=2)
@@ -194,7 +413,7 @@ class Pick3Tokenizer:
             "eos_token": self.EOS_TOKEN,
             "pad_token": self.PAD_TOKEN,
             "unk_token": "[UNK]",
-            "additional_special_tokens": [self.DAY_TOKEN, self.NIGHT_TOKEN, self.SEP_TOKEN, self.PRED_TOKEN, "<UNK>"],
+            "additional_special_tokens": ["<UNK>"],
         }
         with (out_dir / "special_tokens_map.json").open("w", encoding="utf-8") as f:
             json.dump(special_map, f, indent=2)
@@ -222,6 +441,20 @@ class Pick3LLMConfig:
     mlp_ratio: int = 4
     dropout: float = 0.0
     layer_norm_epsilon: float = 1e-5
+    id2label: Dict[int, str] = field(default_factory=lambda: dict(DEFAULT_ID2LABEL))
+    label2id: Dict[str, int] = field(default_factory=lambda: dict(DEFAULT_LABEL2ID))
+
+    def map_id_to_label(self, token_id: Union[int, str]) -> str:
+        """Maps an integer token ID to its corresponding label name using id2label."""
+        try:
+            int_id = int(token_id)
+        except (ValueError, TypeError):
+            return str(token_id)
+        return self.id2label.get(int_id, self.id2label.get(str(int_id), str(token_id)))
+
+    def map_ids_to_labels(self, token_ids: Sequence[Union[int, str]]) -> List[str]:
+        """Maps a sequence of integer token IDs to label names using id2label."""
+        return [self.map_id_to_label(tid) for tid in token_ids]
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -238,6 +471,8 @@ class Pick3LLMConfig:
         data["pad_token_id"] = 10
         data["bos_token_id"] = 11
         data["eos_token_id"] = 12
+        data["id2label"] = {str(k): str(v) for k, v in self.id2label.items()}
+        data["label2id"] = {str(k): int(v) for k, v in self.label2id.items()}
         data["architectures"] = ["GPT2LMHeadModel", "Pick3ForCausalLM"]
         return data
 
@@ -276,6 +511,10 @@ class Pick3LLMConfig:
             cfg.dropout = float(data["dropout"])
         if "layer_norm_epsilon" in data:
             cfg.layer_norm_epsilon = float(data["layer_norm_epsilon"])
+        if "id2label" in data and isinstance(data["id2label"], dict):
+            cfg.id2label = {int(k): str(v) for k, v in data["id2label"].items()}
+        if "label2id" in data and isinstance(data["label2id"], dict):
+            cfg.label2id = {str(k): int(v) for k, v in data["label2id"].items()}
         return cfg
 
 
@@ -371,6 +610,62 @@ class Pick3LLM(nn.Module):
     def blocks(self):
         """Backward compatibility alias for self.h."""
         return self.h
+
+    @property
+    def id2label(self) -> Dict[int, str]:
+        """Returns the integer ID to label name mapping from model configuration."""
+        raw = getattr(self.config, "id2label", DEFAULT_ID2LABEL)
+        if isinstance(raw, dict):
+            return {int(k): str(v) for k, v in raw.items()}
+        return dict(DEFAULT_ID2LABEL)
+
+    @property
+    def label2id(self) -> Dict[str, int]:
+        """Returns the label name to integer ID mapping from model configuration."""
+        raw = getattr(self.config, "label2id", DEFAULT_LABEL2ID)
+        if isinstance(raw, dict):
+            return {str(k): int(v) for k, v in raw.items()}
+        return dict(DEFAULT_LABEL2ID)
+
+    def decode_ids_to_labels(
+        self,
+        token_ids: Any,
+        skip_special_tokens: bool = False,
+    ) -> Union[str, List[Any]]:
+        """
+        Maps integer IDs back to label names using model.config.id2label.
+        Supports single integers, lists, tuples, NumPy arrays, and MLX arrays.
+        """
+        id2label = self.id2label
+        special_tokens = {"<PAD>", "<BOS>", "<EOS>", "<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "[UNK]", "<UNK>"}
+
+        def _map_single_id(tid: Any) -> str:
+            try:
+                int_id = int(tid)
+            except (ValueError, TypeError):
+                return str(tid)
+            return id2label.get(int_id, str(tid))
+
+        if hasattr(token_ids, "tolist"):
+            token_ids = token_ids.tolist()
+
+        if isinstance(token_ids, (int, np.integer)):
+            lbl = _map_single_id(token_ids)
+            if skip_special_tokens and lbl in special_tokens:
+                return ""
+            return lbl
+
+        if isinstance(token_ids, (list, tuple)):
+            if not token_ids:
+                return []
+            if isinstance(token_ids[0], (list, tuple)):
+                return [self.decode_ids_to_labels(seq, skip_special_tokens=skip_special_tokens) for seq in token_ids]
+            labels = [_map_single_id(tid) for tid in token_ids]
+            if skip_special_tokens:
+                labels = [l for l in labels if l not in special_tokens]
+            return labels
+
+        return _map_single_id(token_ids)
 
     def __call__(self, idx: mx.array) -> mx.array:
         B, T = idx.shape
@@ -592,6 +887,76 @@ class Pick3LLM(nn.Module):
 
         return model
 
+    def generate_response_text(
+        self,
+        prompt_tokens: Optional[Sequence[int]] = None,
+        history_draws: Optional[Sequence[Dict[str, Any]]] = None,
+        draw_type: str = "Night",
+        temperature: float = 0.8,
+        include_narrative: bool = False,
+    ) -> str:
+        """
+        Generates and decodes the model response directly into localized natural language text.
+        e.g. 'The next winning Pick 3 numbers are 1 2 3.'
+        """
+        tokenizer = Pick3Tokenizer()
+        if prompt_tokens is None:
+            if history_draws is None:
+                raise ValueError("Either prompt_tokens or history_draws must be provided")
+            prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
+
+        curr_input = list(prompt_tokens)
+        gen_tokens: List[int] = []
+        for _ in range(3):
+            arr = mx.array([curr_input], dtype=mx.int32)
+            step_logits = self(arr)[:, -1, :10]
+            if temperature <= 0.01:
+                next_tok = int(mx.argmax(step_logits, axis=-1).item())
+            else:
+                scaled = step_logits / max(temperature, 1e-4)
+                probs = mx.softmax(scaled, axis=-1)
+                next_tok = int(mx.random.categorical(scaled).item())
+            gen_tokens.append(next_tok)
+            curr_input.append(next_tok)
+
+        return tokenizer.decode_response_text(
+            gen_tokens,
+            draw_type=draw_type,
+            include_narrative=include_narrative,
+        )
+
+    def generate_localized_prediction(
+        self,
+        prompt_tokens: Optional[Sequence[int]] = None,
+        history_draws: Optional[Sequence[Dict[str, Any]]] = None,
+        draw_type: str = "Night",
+        temperature: float = 0.8,
+    ) -> Dict[str, str]:
+        """Generates localized prediction dictionary with primary, alternatives, and permutations."""
+        tokenizer = Pick3Tokenizer()
+        if prompt_tokens is None:
+            if history_draws is None:
+                raise ValueError("Either prompt_tokens or history_draws must be provided")
+            prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
+
+        curr_input = list(prompt_tokens)
+        gen_tokens: List[int] = []
+        for _ in range(3):
+            arr = mx.array([curr_input], dtype=mx.int32)
+            step_logits = self(arr)[0, -1, :10]
+            if temperature <= 0.01:
+                next_tok = int(mx.argmax(step_logits, axis=-1).item())
+            else:
+                scaled = step_logits / max(temperature, 1e-4)
+                next_tok = int(mx.random.categorical(scaled).item())
+            gen_tokens.append(next_tok)
+            curr_input.append(next_tok)
+
+        return tokenizer.decode_response(
+            gen_tokens,
+            draw_type=draw_type,
+        )
+
 
 # ==============================================================================
 # Remote Model Loader & Local Model Generator
@@ -676,6 +1041,229 @@ class RemoteLottoModelLoader:
         saved_dir = model.save_pretrained(local_path)
         print(f"[RemoteModelLoader] Local model generated and saved to '{saved_dir}'")
         return model
+
+
+# ==============================================================================
+# oMLX Client & Server Integration
+# ==============================================================================
+
+class OMLXPick3Client:
+    """
+    Client for interacting with local oMLX and mlx-lm inference servers.
+    Formats chat and completion requests, handles raw token/digit stream outputs,
+    and decodes them directly into localized natural language lottery predictions.
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:8000/v1",
+        model_name: str = "pick3_llm_model",
+        timeout: float = 15.0,
+        api_key: Optional[str] = None,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout = timeout
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "EMPTY")
+        self.tokenizer = Pick3Tokenizer()
+
+    def extract_delta_content(self, chunk: Any) -> str:
+        """
+        Safely extracts text delta from streaming chunk without NoneType TypeError.
+        Coalesces None or missing values to empty string.
+        """
+        if not isinstance(chunk, dict):
+            return ""
+        choices = chunk.get("choices", [])
+        if not choices or not isinstance(choices[0], dict):
+            return ""
+        choice = choices[0]
+        delta = choice.get("delta", {})
+        if isinstance(delta, dict):
+            content = delta.get("content")
+            return str(content) if content is not None else ""
+        elif "text" in choice:
+            content = choice.get("text")
+            return str(content) if content is not None else ""
+        return ""
+
+    def parse_response(
+        self,
+        raw_output: Any,
+        draw_type: str = "Night",
+    ) -> Dict[str, str]:
+        """
+        Parses raw text or JSON response from oMLX into a localized prediction dictionary.
+        Extracts primary winning numbers and multi-draw candidate combinations.
+        """
+        raw_text = ""
+        if isinstance(raw_output, dict):
+            # Handle OpenAI-compatible response format
+            choices = raw_output.get("choices", [])
+            if choices:
+                first_choice = choices[0]
+                if isinstance(first_choice, dict):
+                    if "message" in first_choice and isinstance(first_choice["message"], dict):
+                        content = first_choice["message"].get("content")
+                        raw_text = str(content) if content is not None else ""
+                    elif "delta" in first_choice and isinstance(first_choice["delta"], dict):
+                        content = first_choice["delta"].get("content")
+                        raw_text = str(content) if content is not None else ""
+                    elif "text" in first_choice:
+                        content = first_choice.get("text")
+                        raw_text = str(content) if content is not None else ""
+                    else:
+                        raw_text = str(first_choice)
+                else:
+                    raw_text = str(first_choice)
+            else:
+                raw_text = str(raw_output)
+        elif raw_output is not None:
+            raw_text = str(raw_output)
+
+        return self.tokenizer.decode_response(raw_text, draw_type=draw_type)
+
+    def parse_response_text(
+        self,
+        raw_output: Any,
+        draw_type: str = "Night",
+        include_narrative: bool = False,
+    ) -> str:
+        """
+        Parses raw text or JSON response from oMLX directly into localized prediction text.
+        e.g., 'The next winning Pick 3 numbers are 6 5 2.'
+        """
+        resp = self.parse_response(raw_output, draw_type=draw_type)
+        return resp["narrative"] if include_narrative else resp["primary"]
+
+    def create_chat_prompt(self, draw_type: str = "Night", history_summary: Optional[str] = None) -> List[Dict[str, str]]:
+        """Constructs an OpenAI-compatible messages list conditioned for Pick 3 prediction."""
+        content = f"Predict the next Pick 3 {draw_type} draw numbers."
+        if history_summary:
+            content = f"{history_summary}\n{content}"
+        return [
+            {"role": "user", "content": content}
+        ]
+
+    def create_completion_prompt(self, draw_type: str = "Night") -> str:
+        """Constructs raw token prompt string formatted with control tokens."""
+        tag = "<DAY>" if str(draw_type).strip().lower().startswith("day") else "<NIGHT>"
+        return f"<BOS> <PRED> {tag}"
+
+    def stream_chat(
+        self,
+        draw_type: str = "Night",
+        temperature: float = 0.8,
+        max_tokens: int = 16,
+        history_summary: Optional[str] = None,
+    ) -> Any:
+        """
+        Streams chat completion delta tokens from oMLX / mlx-lm endpoint via Server-Sent Events (SSE).
+        Safely handles None delta contents and yields text deltas in real time.
+        """
+        endpoint = f"{self.base_url}/chat/completions"
+        payload = {
+            "model": self.model_name,
+            "messages": self.create_chat_prompt(draw_type=draw_type, history_summary=history_summary),
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "stop": ["<EOS>", "[EOS]"],
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "text/event-stream",
+        }
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            for line in resp:
+                line_str = line.decode("utf-8").strip()
+                if not line_str or line_str.startswith(":"):
+                    continue
+                if line_str == "data: [DONE]":
+                    break
+                if line_str.startswith("data: "):
+                    data_json = line_str[6:].strip()
+                    try:
+                        chunk = json.loads(data_json)
+                        delta_text = self.extract_delta_content(chunk)
+                        if delta_text:
+                            yield delta_text
+                    except json.JSONDecodeError:
+                        continue
+
+    def stream_predict(
+        self,
+        draw_type: str = "Night",
+        temperature: float = 0.8,
+        max_tokens: int = 16,
+        history_summary: Optional[str] = None,
+    ) -> Tuple[List[str], Dict[str, str]]:
+        """
+        Consumes streaming tokens safely and returns both the stream tokens and final parsed localized prediction.
+        """
+        tokens: List[str] = []
+        for token in self.stream_chat(
+            draw_type=draw_type,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            history_summary=history_summary,
+        ):
+            if token:
+                tokens.append(token)
+        full_text = "".join(tokens)
+        parsed = self.parse_response(full_text, draw_type=draw_type)
+        return tokens, parsed
+
+    def predict(
+        self,
+        draw_type: str = "Night",
+        temperature: float = 0.8,
+        max_tokens: int = 16,
+        use_chat: bool = True,
+    ) -> Dict[str, str]:
+        """
+        Queries the running oMLX server and returns the parsed, localized prediction dictionary.
+        """
+        endpoint = f"{self.base_url}/chat/completions" if use_chat else f"{self.base_url}/completions"
+        if use_chat:
+            payload = {
+                "model": self.model_name,
+                "messages": self.create_chat_prompt(draw_type=draw_type),
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stop": ["<EOS>", "[EOS]"],
+            }
+        else:
+            payload = {
+                "model": self.model_name,
+                "prompt": self.create_completion_prompt(draw_type=draw_type),
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "stop": ["<EOS>", "[EOS]"],
+            }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
+
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return self.parse_response(data, draw_type=draw_type)
 
 
 # ==============================================================================

@@ -195,6 +195,109 @@ class TestPick3LLM(unittest.TestCase):
         self.assertIn("52.0%", res_probs["positional_summary"])
         self.assertIn("61.0%", res_probs["positional_summary"])
 
+    def test_decode_raw_digit_stream_into_localized_text(self):
+        raw_stream = "6 5 2 4 1 3 0 3 0 4 1 3 6 5 2 0 5 6 1 1 8 6 6 6 0 3 2 4 6 2 1"
+        raw_token_list = [6, 5, 2, 4, 1, 3, 0, 3, 0, 4, 1, 3, 6, 5, 2, 0, 5, 6, 1, 1, 8, 6, 6, 6, 0, 3, 2, 4, 6, 2, 1]
+
+        # Test extraction of all triplets
+        triplets = self.tokenizer.decode_all_draw_digits(raw_stream)
+        self.assertEqual(triplets[0], (6, 5, 2))
+        self.assertEqual(triplets[1], (4, 1, 3))
+        self.assertEqual(triplets[2], (0, 3, 0))
+        self.assertEqual(len(triplets), 10)
+
+        # Test localized text decoding from string
+        text_from_str = self.tokenizer.decode_response_text(raw_stream, draw_type="Night")
+        self.assertEqual(text_from_str, "The next winning Pick 3 numbers are 6 5 2.")
+
+        # Test rich response dictionary from list
+        resp_dict = self.tokenizer.decode_response(raw_token_list, draw_type="Night")
+        self.assertEqual(resp_dict["primary"], "The next winning Pick 3 numbers are 6 5 2.")
+        self.assertIn("4 1 3", resp_dict["alternatives"])
+        self.assertIn("0 3 0", resp_dict["alternatives"])
+        self.assertIn("6-5-2", resp_dict["box_permutations"])
+
+        # Test tokenizer decode with localize=True
+        loc_decoded = self.tokenizer.decode(raw_token_list, localize=True, draw_type="Night")
+        self.assertEqual(loc_decoded, "The next winning Pick 3 numbers are 6 5 2.")
+
+    def test_omlx_pick3_client_verification(self):
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(base_url="http://localhost:8000/v1")
+
+        # 1. Verify prompt generators
+        chat_prompt = client.create_chat_prompt(draw_type="Day")
+        self.assertEqual(len(chat_prompt), 1)
+        self.assertIn("Day", chat_prompt[0]["content"])
+
+        comp_prompt = client.create_completion_prompt(draw_type="Night")
+        self.assertEqual(comp_prompt, "<BOS> <PRED> <NIGHT>")
+
+        # 2. Verify raw stream decoding via client
+        raw_stream = "6 5 2 4 1 3 0 3 0 4 1 3 6 5 2 0 5 6 1 1 8 6 6 6 0 3 2 4 6 2 1"
+        res_text = client.parse_response_text(raw_stream, draw_type="Night")
+        self.assertEqual(res_text, "The next winning Pick 3 numbers are 6 5 2.")
+
+        res_dict = client.parse_response(raw_stream, draw_type="Night")
+        self.assertEqual(res_dict["primary"], "The next winning Pick 3 numbers are 6 5 2.")
+        self.assertIn("4 1 3", res_dict["alternatives"])
+        self.assertIn("0 3 0", res_dict["alternatives"])
+        self.assertIn("6-5-2", res_dict["box_permutations"])
+
+        # 3. Verify OpenAI-compatible chat response payload
+        openai_chat_payload = {
+            "id": "chatcmpl-test",
+            "object": "chat.completion",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "6 5 2 4 1 3 0 3 0",
+                    },
+                    "finish_reason": "stop"
+                }
+            ]
+        }
+        parsed_chat = client.parse_response(openai_chat_payload, draw_type="Night")
+        self.assertEqual(parsed_chat["primary"], "The next winning Pick 3 numbers are 6 5 2.")
+        self.assertIn("4 1 3", parsed_chat["alternatives"])
+
+        # 4. Verify OpenAI-compatible completion response payload
+        openai_comp_payload = {
+            "id": "cmpl-test",
+            "object": "text_completion",
+            "choices": [
+                {
+                    "text": "7 8 9",
+                    "index": 0,
+                    "finish_reason": "stop"
+                }
+            ]
+        }
+        parsed_comp = client.parse_response(openai_comp_payload, draw_type="Day")
+        self.assertEqual(parsed_comp["primary"], "The next winning Pick 3 numbers are 7 8 9.")
+        self.assertEqual(parsed_comp["draw"], "Day")
+
+        # 5. Verify streaming chunk extraction and None delta resilience
+        chunk_init = {"choices": [{"delta": {"role": "assistant", "content": None}}]}
+        self.assertEqual(client.extract_delta_content(chunk_init), "")
+
+        chunk_data = {"choices": [{"delta": {"content": "6 "}}]}
+        self.assertEqual(client.extract_delta_content(chunk_data), "6 ")
+
+        chunk_finish = {"choices": [{"delta": {}, "finish_reason": "stop"}]}
+        self.assertEqual(client.extract_delta_content(chunk_finish), "")
+
+        chunk_empty = {}
+        self.assertEqual(client.extract_delta_content(chunk_empty), "")
+
+        # 6. Verify client parse_response with None or empty payloads
+        none_payload = {"choices": [{"message": {"role": "assistant", "content": None}}]}
+        res_none = client.parse_response(none_payload, draw_type="Night")
+        self.assertIn("primary", res_none)
+
     def test_cli_execution(self):
         import subprocess
         import sys
