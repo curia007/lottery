@@ -151,7 +151,7 @@ def create_evaluation_batch(
     records: List[Dict[str, Any]],
     window_size: int = 5,
     batch_size: int = 32,
-    max_len: int = 48,
+    max_len: int = 128,
     tokenizer: Optional[Pick3EvalTokenizer] = None,
 ) -> Tuple[Any, Any, Any]:
     """
@@ -269,7 +269,7 @@ def evaluate_model_on_jsonl(
     jsonl_path: Union[str, Path],
     window_size: int = 10,
     batch_size: int = 64,
-    max_len: int = 64,
+    max_len: int = 128,
 ) -> Dict[str, float]:
     """Evaluates cross-entropy loss and accuracy across the complete dataset."""
     records = load_draw_jsonl(jsonl_path)
@@ -315,7 +315,7 @@ def main():
     parser.add_argument("--model-dir", type=str, default=str(DEFAULT_MODEL_DIR), help="Path to model directory")
     parser.add_argument("--window-size", type=int, default=10, help="Number of historical draws in prompt")
     parser.add_argument("--batch-size", type=int, default=64, help="Evaluation batch size")
-    parser.add_argument("--max-len", type=int, default=64, help="Maximum sequence length")
+    parser.add_argument("--max-len", type=int, default=128, help="Maximum sequence length")
     parser.add_argument("--output-metrics", type=str, default=None, help="Optional JSON file to save metrics")
 
     args = parser.parse_args()

@@ -128,7 +128,7 @@ def build_training_and_validation_datasets(
     records: List[Pick3DrawRecord],
     tokenizer,
     window_size: int = 10,
-    max_seq_len: int = 64,
+    max_seq_len: int = 128,
     val_split: float = 0.2,
     target_loss_only: bool = True,
 ) -> Tuple[Tuple[mx.array, mx.array, mx.array], Optional[Tuple[mx.array, mx.array, mx.array]]]:
@@ -396,7 +396,7 @@ def run_training_pipeline(
     epochs: int = 10,
     batch_size: int = 32,
     window_size: int = 10,
-    max_seq_len: int = 64,
+    max_seq_len: int = 128,
     val_split: float = 0.2,
     n_embd: int = 64,
     n_head: int = 4,

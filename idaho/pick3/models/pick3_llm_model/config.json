@@ -1,7 +1,7 @@
 {
   "model_type": "gpt2",
   "vocab_size": 75,
-  "max_position_embeddings": 64,
+  "max_position_embeddings": 128,
   "hidden_size": 64,
   "num_attention_heads": 4,
   "num_hidden_layers": 3,
@@ -64,13 +64,13 @@
     "AutoConfig": "pick3_hf_model.Pick3HFConfig",
     "AutoModelForCausalLM": "pick3_hf_model.Pick3ForCausalLM"
   },
-  "n_positions": 64,
-  "n_ctx": 64,
+  "n_positions": 128,
+  "n_ctx": 128,
   "n_embd": 64,
   "n_layer": 3,
   "n_head": 4,
   "n_inner": 256,
   "activation_function": "gelu",
-  "max_seq_len": 64,
+  "max_seq_len": 128,
   "mlp_ratio": 4
 }
