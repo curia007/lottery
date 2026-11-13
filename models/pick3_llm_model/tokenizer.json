@@ -1,0 +1,1214 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {
+      "id": 10,
+      "content": "<PAD>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 11,
+      "content": "<BOS>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 12,
+      "content": "<EOS>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 13,
+      "content": "<DAY>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 14,
+      "content": "<NIGHT>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 15,
+      "content": "<SEP>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 16,
+      "content": "<PRED>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 10,
+      "content": "[UNK]",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 10,
+      "content": "<UNK>",
+      "single_word": false,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": true
+    },
+    {
+      "id": 17,
+      "content": "the",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 18,
+      "content": "next",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 19,
+      "content": "winning",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 20,
+      "content": "idaho",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 21,
+      "content": "pick",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 22,
+      "content": "lottery",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 23,
+      "content": "numbers",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 24,
+      "content": "are",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 25,
+      "content": "draw",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 26,
+      "content": "prediction",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 27,
+      "content": "day",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 28,
+      "content": "night",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 29,
+      "content": "is",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 30,
+      "content": "for",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 31,
+      "content": "of",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 32,
+      "content": "in",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 33,
+      "content": "and",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 34,
+      "content": "to",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 35,
+      "content": "a",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 36,
+      "content": "most",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 37,
+      "content": "probable",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 38,
+      "content": "combination",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 39,
+      "content": "combinations",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 40,
+      "content": "alternative",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 41,
+      "content": "first",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 42,
+      "content": "second",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 43,
+      "content": "third",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 44,
+      "content": "digit",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 45,
+      "content": "digits",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 46,
+      "content": "sequence",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 47,
+      "content": "sum",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 48,
+      "content": "odd",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 49,
+      "content": "even",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 50,
+      "content": "high",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 51,
+      "content": "low",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 52,
+      "content": "box",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 53,
+      "content": "play",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 54,
+      "content": "straight",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 55,
+      "content": "any",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 56,
+      "content": "order",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 57,
+      "content": "permutations",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 58,
+      "content": "confidence",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 59,
+      "content": "position",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 60,
+      "content": "positional",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 61,
+      "content": "breakdown",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 62,
+      "content": "coverage",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 63,
+      "content": "result",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 64,
+      "content": "results",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 65,
+      "content": "recommended",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 66,
+      "content": "based",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 67,
+      "content": "analysis",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 68,
+      "content": "Day",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 69,
+      "content": "Night",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 70,
+      "content": "Prediction",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 71,
+      "content": ".",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 72,
+      "content": ",",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 73,
+      "content": ":",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    },
+    {
+      "id": 74,
+      "content": "-",
+      "single_word": true,
+      "lstrip": false,
+      "rstrip": false,
+      "normalized": false,
+      "special": false
+    }
+  ],
+  "normalizer": null,
+  "pre_tokenizer": {
+    "type": "WhitespaceSplit"
+  },
+  "post_processor": null,
+  "decoder": {
+    "type": "Sequence",
+    "decoders": [
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "0"
+        },
+        "content": " 0"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "1"
+        },
+        "content": " 1"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "2"
+        },
+        "content": " 2"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "3"
+        },
+        "content": " 3"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "4"
+        },
+        "content": " 4"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "5"
+        },
+        "content": " 5"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "6"
+        },
+        "content": " 6"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "7"
+        },
+        "content": " 7"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "8"
+        },
+        "content": " 8"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "9"
+        },
+        "content": " 9"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<DAY>"
+        },
+        "content": "Day draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<NIGHT>"
+        },
+        "content": "Night draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<SEP>"
+        },
+        "content": ". "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<PRED>"
+        },
+        "content": "Prediction: "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<EOS>"
+        },
+        "content": "."
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "the"
+        },
+        "content": " the"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "next"
+        },
+        "content": " next"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "winning"
+        },
+        "content": " winning"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "idaho"
+        },
+        "content": " idaho"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "pick"
+        },
+        "content": " pick"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "lottery"
+        },
+        "content": " lottery"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "numbers"
+        },
+        "content": " numbers"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "are"
+        },
+        "content": " are"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "draw"
+        },
+        "content": " draw"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "prediction"
+        },
+        "content": " prediction"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "day"
+        },
+        "content": " day"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "night"
+        },
+        "content": " night"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "is"
+        },
+        "content": " is"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "for"
+        },
+        "content": " for"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "of"
+        },
+        "content": " of"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "in"
+        },
+        "content": " in"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "and"
+        },
+        "content": " and"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "to"
+        },
+        "content": " to"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "a"
+        },
+        "content": " a"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "most"
+        },
+        "content": " most"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "probable"
+        },
+        "content": " probable"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "combination"
+        },
+        "content": " combination"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "combinations"
+        },
+        "content": " combinations"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "alternative"
+        },
+        "content": " alternative"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "first"
+        },
+        "content": " first"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "second"
+        },
+        "content": " second"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "third"
+        },
+        "content": " third"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "digit"
+        },
+        "content": " digit"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "digits"
+        },
+        "content": " digits"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "sequence"
+        },
+        "content": " sequence"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "sum"
+        },
+        "content": " sum"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "odd"
+        },
+        "content": " odd"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "even"
+        },
+        "content": " even"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "high"
+        },
+        "content": " high"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "low"
+        },
+        "content": " low"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "box"
+        },
+        "content": " box"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "play"
+        },
+        "content": " play"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "straight"
+        },
+        "content": " straight"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "any"
+        },
+        "content": " any"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "order"
+        },
+        "content": " order"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "permutations"
+        },
+        "content": " permutations"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "confidence"
+        },
+        "content": " confidence"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "position"
+        },
+        "content": " position"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "positional"
+        },
+        "content": " positional"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "breakdown"
+        },
+        "content": " breakdown"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "coverage"
+        },
+        "content": " coverage"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "result"
+        },
+        "content": " result"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "results"
+        },
+        "content": " results"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "recommended"
+        },
+        "content": " recommended"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "based"
+        },
+        "content": " based"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "analysis"
+        },
+        "content": " analysis"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "Day"
+        },
+        "content": " Day"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "Night"
+        },
+        "content": " Night"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "Prediction"
+        },
+        "content": " Prediction"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "."
+        },
+        "content": " ."
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": ","
+        },
+        "content": " ,"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": ":"
+        },
+        "content": " :"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "-"
+        },
+        "content": " -"
+      }
+    ]
+  },
+  "model": {
+    "type": "WordLevel",
+    "vocab": {
+      "0": 0,
+      "1": 1,
+      "2": 2,
+      "3": 3,
+      "4": 4,
+      "5": 5,
+      "6": 6,
+      "7": 7,
+      "8": 8,
+      "9": 9,
+      "<PAD>": 10,
+      "<BOS>": 11,
+      "<EOS>": 12,
+      "<DAY>": 13,
+      "<NIGHT>": 14,
+      "<SEP>": 15,
+      "<PRED>": 16,
+      "[UNK]": 10,
+      "<UNK>": 10,
+      "the": 17,
+      "next": 18,
+      "winning": 19,
+      "idaho": 20,
+      "pick": 21,
+      "lottery": 22,
+      "numbers": 23,
+      "are": 24,
+      "draw": 25,
+      "prediction": 26,
+      "day": 27,
+      "night": 28,
+      "is": 29,
+      "for": 30,
+      "of": 31,
+      "in": 32,
+      "and": 33,
+      "to": 34,
+      "a": 35,
+      "most": 36,
+      "probable": 37,
+      "combination": 38,
+      "combinations": 39,
+      "alternative": 40,
+      "first": 41,
+      "second": 42,
+      "third": 43,
+      "digit": 44,
+      "digits": 45,
+      "sequence": 46,
+      "sum": 47,
+      "odd": 48,
+      "even": 49,
+      "high": 50,
+      "low": 51,
+      "box": 52,
+      "play": 53,
+      "straight": 54,
+      "any": 55,
+      "order": 56,
+      "permutations": 57,
+      "confidence": 58,
+      "position": 59,
+      "positional": 60,
+      "breakdown": 61,
+      "coverage": 62,
+      "result": 63,
+      "results": 64,
+      "recommended": 65,
+      "based": 66,
+      "analysis": 67,
+      "Day": 68,
+      "Night": 69,
+      "Prediction": 70,
+      ".": 71,
+      ",": 72,
+      ":": 73,
+      "-": 74
+    },
+    "unk_token": "[UNK]"
+  }
+}

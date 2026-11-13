@@ -67,6 +67,22 @@ DEFAULT_CSV_PATH = "idaho/pick3/data/idaho_pick3_history.csv"
 DEFAULT_MODEL_DIR = "models/pick3_llm_model"
 DEFAULT_REMOTE_MODEL = "remote://lottery-ai/pick3-transformer-base"
 
+# Word-level tokens for localized lottery text (expanded vocabulary)
+# These enable the model to generate natural language responses like
+# "The next winning Idaho Pick 3 lottery numbers are 1 2 3."
+WORD_TOKENS = [
+    "the", "next", "winning", "idaho", "pick", "lottery", "numbers",
+    "are", "draw", "prediction", "day", "night", "is", "for",
+    "of", "in", "and", "to", "a", "most", "probable", "combination",
+    "combinations", "alternative", "first", "second", "third", "digit",
+    "digits", "sequence", "sum", "odd", "even", "high", "low",
+    "box", "play", "straight", "any", "order", "permutations",
+    "confidence", "position", "positional", "breakdown", "coverage",
+    "result", "results", "recommended", "based", "analysis",
+    "Day", "Night", "Prediction",
+    ".", ",", ":", "-",
+]
+
 DEFAULT_ID2LABEL: Dict[int, str] = {
     0: "0",
     1: "1",
@@ -86,6 +102,9 @@ DEFAULT_ID2LABEL: Dict[int, str] = {
     15: "<SEP>",
     16: "<PRED>",
 }
+# Add word tokens to id2label
+for idx, word in enumerate(WORD_TOKENS):
+    DEFAULT_ID2LABEL[17 + idx] = word
 
 DEFAULT_LABEL2ID: Dict[str, int] = {
     "0": 0,
@@ -106,6 +125,9 @@ DEFAULT_LABEL2ID: Dict[str, int] = {
     "<SEP>": 15,
     "<PRED>": 16,
 }
+# Add word tokens to label2id
+for idx, word in enumerate(WORD_TOKENS):
+    DEFAULT_LABEL2ID[word] = 17 + idx
 
 
 # ==============================================================================
@@ -114,7 +136,7 @@ DEFAULT_LABEL2ID: Dict[str, int] = {
 
 class Pick3Tokenizer:
     """
-    Tokenizer for lottery sequence modeling.
+    Tokenizer for lottery sequence modeling with expanded vocabulary.
     Tokens:
       0-9   : Digits '0' through '9'
       10    : '<PAD>' (Padding token)
@@ -124,6 +146,8 @@ class Pick3Tokenizer:
       14    : '<NIGHT>' (Night draw marker)
       15    : '<SEP>' (Separator between draws)
       16    : '<PRED>' (Target prediction prompt prefix)
+      17+   : Word-level tokens for localized lottery text
+              (e.g., 'the', 'next', 'winning', 'idaho', 'pick', 'lottery', 'numbers', etc.)
     """
     PAD_TOKEN = "<PAD>"
     BOS_TOKEN = "<BOS>"
@@ -144,7 +168,8 @@ class Pick3Tokenizer:
             self.PRED_TOKEN,
         ]
         self.digit_tokens = [str(i) for i in range(10)]
-        self.vocab = self.digit_tokens + self.special_tokens
+        self.word_tokens = list(WORD_TOKENS)
+        self.vocab = self.digit_tokens + self.special_tokens + self.word_tokens
         self.token_to_id = {t: i for i, t in enumerate(self.vocab)}
         self.id_to_token = {i: t for i, t in enumerate(self.vocab)}
         self.id2label = dict(DEFAULT_ID2LABEL)
@@ -372,6 +397,23 @@ class Pick3Tokenizer:
         out_dir.mkdir(parents=True, exist_ok=True)
         from idaho.pick3.pick3_hf_model import Pick3HFHub
 
+        # Build added_tokens_decoder dynamically with all tokens
+        added_tokens_decoder = {
+            "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+        }
+        # Add word tokens
+        for idx, word in enumerate(self.word_tokens):
+            token_id = 17 + idx
+            added_tokens_decoder[str(token_id)] = {
+                "content": word, "lstrip": False, "normalized": False,
+                "rstrip": False, "single_word": True, "special": False
+            }
         tok_cfg = {
             "tokenizer_class": "PreTrainedTokenizerFast",
             "model_type": "gpt2",
@@ -383,15 +425,7 @@ class Pick3Tokenizer:
             "model_max_length": 128,
             "clean_up_tokenization_spaces": False,
             "chat_template": Pick3HFHub.DEFAULT_CHAT_TEMPLATE,
-            "added_tokens_decoder": {
-                "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-            },
+            "added_tokens_decoder": added_tokens_decoder,
             "special_tokens": [self.PAD_TOKEN, self.BOS_TOKEN, self.EOS_TOKEN, "[UNK]", "<UNK>"],
         }
         with (out_dir / "tokenizer_config.json").open("w", encoding="utf-8") as f:
@@ -433,7 +467,7 @@ class Pick3Tokenizer:
 
 @dataclass
 class Pick3LLMConfig:
-    vocab_size: int = 17
+    vocab_size: int = 75
     max_seq_len: int = 128
     n_embd: int = 64
     n_head: int = 4
@@ -689,7 +723,9 @@ class Pick3LLM(nn.Module):
     def sanitize_weights_for_load(self, raw_weights: Dict[str, mx.array]) -> Dict[str, mx.array]:
         """
         Sanitizes raw weights from checkpoints, handling legacy block names,
-        fused attention projections, prefix stripping, and Conv1D/Linear transpose.
+        fused attention projections, prefix stripping, Conv1D/Linear transpose,
+        and vocabulary size mismatches (e.g., old checkpoints with vocab_size=17
+        loaded into models with expanded vocab_size=75).
         """
         cleaned = {}
         for k, v in raw_weights.items():
@@ -736,6 +772,29 @@ class Pick3LLM(nn.Module):
                 final[k] = v.transpose(1, 0)
             else:
                 final[k] = v
+
+        # Handle vocabulary size mismatch: resize wte.weight if saved vocab differs from config
+        if "wte.weight" in final:
+            saved_vocab, saved_embd = final["wte.weight"].shape
+            expected_vocab = self.config.vocab_size
+            if saved_vocab != expected_vocab:
+                print(f"[Pick3LLM] Resizing embedding wte.weight from ({saved_vocab}, {saved_embd}) "
+                      f"to ({expected_vocab}, {saved_embd}) to match config vocab_size.")
+                extra = expected_vocab - saved_vocab
+                padding = mx.zeros((extra, saved_embd), dtype=final["wte.weight"].dtype)
+                final["wte.weight"] = mx.concatenate([final["wte.weight"], padding], axis=0)
+
+        # Handle sequence length mismatch: resize wpe.weight if saved max_seq_len differs from config
+        if "wpe.weight" in final:
+            saved_seq, saved_embd = final["wpe.weight"].shape
+            expected_seq = self.config.max_seq_len
+            if saved_seq != expected_seq:
+                print(f"[Pick3LLM] Resizing position embedding wpe.weight from ({saved_seq}, {saved_embd}) "
+                      f"to ({expected_seq}, {saved_embd}) to match config max_seq_len.")
+                extra = expected_seq - saved_seq
+                padding = mx.zeros((extra, saved_embd), dtype=final["wpe.weight"].dtype)
+                final["wpe.weight"] = mx.concatenate([final["wpe.weight"], padding], axis=0)
+
         return final
 
     def export_hf_weights(self) -> Dict[str, mx.array]:
@@ -1025,7 +1084,7 @@ class RemoteLottoModelLoader:
             print(f"[RemoteModelLoader] Initializing base Lotto Transformer from remote spec: {remote_model_uri}")
             if config is None:
                 config = Pick3LLMConfig(
-                    vocab_size=17,
+                    vocab_size=75,
                     max_seq_len=128,
                     n_embd=64,
                     n_head=4,

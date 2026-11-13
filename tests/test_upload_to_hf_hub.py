@@ -28,7 +28,7 @@ class TestUploadToHFHub(unittest.TestCase):
             "val_exact_match_rate": 0.045,
         }
         config_dict = {
-            "vocab_size": 17,
+            "vocab_size": 75,
             "hidden_size": 64,
             "num_attention_heads": 4,
             "num_hidden_layers": 3,

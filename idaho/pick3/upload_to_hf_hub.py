@@ -79,7 +79,7 @@ def create_model_card(
     if config_dict:
         cfg_block = "## Model Configuration\n\n```json\n" + json.dumps(config_dict, indent=2) + "\n```\n\n"
 
-    vocab_size = config_dict.get("vocab_size", 17)
+    vocab_size = config_dict.get("vocab_size", 75)
     hidden_size = config_dict.get("hidden_size", config_dict.get("n_embd", 64))
     num_heads = config_dict.get("num_attention_heads", config_dict.get("n_head", 4))
     num_layers = config_dict.get("num_hidden_layers", config_dict.get("n_layer", 3))
@@ -240,11 +240,28 @@ def ensure_hf_assets(
     # 3. Tokenizer Configuration and Fast Tokenizer (tokenizer.json)
     tok_cfg_path = src_dir / "tokenizer_config.json"
     if not tok_cfg_path.exists():
+        from idaho.pick3.pick3_llm_ticket_model import WORD_TOKENS
+
         max_len = config_data.get("max_position_embeddings", config_data.get("max_seq_len", 128))
+        added_tokens_decoder = {
+            "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+        }
+        for idx, word in enumerate(WORD_TOKENS):
+            token_id = 17 + idx
+            added_tokens_decoder[str(token_id)] = {
+                "content": word, "lstrip": False, "normalized": False,
+                "rstrip": False, "single_word": True, "special": False
+            }
         tok_cfg = {
             "tokenizer_class": "PreTrainedTokenizerFast",
             "model_type": "gpt2",
-            "vocab_size": config_data.get("vocab_size", 17),
+            "vocab_size": config_data.get("vocab_size", 75),
             "bos_token": "<BOS>",
             "eos_token": "<EOS>",
             "pad_token": "<PAD>",
@@ -252,16 +269,8 @@ def ensure_hf_assets(
             "model_max_length": max_len,
             "clean_up_tokenization_spaces": False,
             "chat_template": DEFAULT_CHAT_TEMPLATE,
-            "added_tokens_decoder": {
-                "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-            },
-            "special_tokens": ["<PAD>", "<BOS>", "<EOS>", "<DAY>", "<NIGHT>", "<SEP>", "<PRED>", "[UNK]", "<UNK>"],
+            "added_tokens_decoder": added_tokens_decoder,
+            "special_tokens": ["<PAD>", "<BOS>", "<EOS>", "[UNK]", "<UNK>"],
         }
         with tok_cfg_path.open("w", encoding="utf-8") as f:
             json.dump(tok_cfg, f, indent=2)
@@ -279,6 +288,8 @@ def ensure_hf_assets(
 
     tok_json_path = src_dir / "tokenizer.json"
     if not tok_json_path.exists():
+        from idaho.pick3.pick3_llm_ticket_model import WORD_TOKENS
+
         vocab_dict = {str(i): i for i in range(10)}
         vocab_dict.update({
             "<PAD>": 10,
@@ -291,21 +302,29 @@ def ensure_hf_assets(
             "[UNK]": 10,
             "<UNK>": 10,
         })
+        for idx, word in enumerate(WORD_TOKENS):
+            vocab_dict[word] = 17 + idx
+        added_tokens = [
+            {"id": 10, "content": "<PAD>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 11, "content": "<BOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 12, "content": "<EOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 10, "content": "[UNK]", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 10, "content": "<UNK>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+        ]
+        for idx, word in enumerate(WORD_TOKENS):
+            added_tokens.append({
+                "id": 17 + idx, "content": word, "single_word": True,
+                "lstrip": False, "rstrip": False, "normalized": False, "special": False
+            })
         tok_json = {
             "version": "1.0",
             "truncation": None,
             "padding": None,
-            "added_tokens": [
-                {"id": 10, "content": "<PAD>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 11, "content": "<BOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 12, "content": "<EOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 10, "content": "[UNK]", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 10, "content": "<UNK>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-            ],
+            "added_tokens": added_tokens,
             "normalizer": None,
             "pre_tokenizer": {
                 "type": "WhitespaceSplit"
@@ -329,6 +348,8 @@ def ensure_hf_assets(
     # 4. Vocab dictionary
     vocab_path = src_dir / "vocab.json"
     if not vocab_path.exists():
+        from idaho.pick3.pick3_llm_ticket_model import WORD_TOKENS
+
         vocab_dict = {str(i): i for i in range(10)}
         vocab_dict.update({
             "<PAD>": 10,
@@ -341,6 +362,8 @@ def ensure_hf_assets(
             "[UNK]": 10,
             "<UNK>": 10,
         })
+        for idx, word in enumerate(WORD_TOKENS):
+            vocab_dict[word] = 17 + idx
         with vocab_path.open("w", encoding="utf-8") as f:
             json.dump(vocab_dict, f, indent=2)
 

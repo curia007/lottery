@@ -102,7 +102,7 @@ class Pick3HFConfig:
     Configuration specification compatible with Hugging Face Transformers.
     """
     model_type: str = "gpt2"
-    vocab_size: int = 17
+    vocab_size: int = 75
     max_position_embeddings: int = 128
     hidden_size: int = 64
     num_attention_heads: int = 4
@@ -691,7 +691,9 @@ model.eval()
 
     @classmethod
     def get_fast_tokenizer_dict(cls) -> Dict[str, Any]:
-        """Returns the serialized Hugging Face Tokenizers fast tokenizer dictionary."""
+        """Returns the serialized Hugging Face Tokenizers fast tokenizer dictionary with expanded vocabulary."""
+        from idaho.pick3.pick3_llm_ticket_model import WORD_TOKENS
+
         vocab_dict = {str(i): i for i in range(10)}
         vocab_dict.update({
             "<PAD>": 10,
@@ -704,21 +706,50 @@ model.eval()
             "[UNK]": 10,
             "<UNK>": 10,
         })
+        # Add word tokens
+        for idx, word in enumerate(WORD_TOKENS):
+            vocab_dict[word] = 17 + idx
+
+        # Build added_tokens list
+        added_tokens = [
+            {"id": 10, "content": "<PAD>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 11, "content": "<BOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 12, "content": "<EOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
+            {"id": 10, "content": "[UNK]", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+            {"id": 10, "content": "<UNK>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
+        ]
+        # Add word tokens to added_tokens
+        for idx, word in enumerate(WORD_TOKENS):
+            added_tokens.append({
+                "id": 17 + idx, "content": word, "single_word": True,
+                "lstrip": False, "rstrip": False, "normalized": False, "special": False
+            })
+
+        # Build decoder replacements
+        decoders = [
+            *[
+                {"type": "Replace", "pattern": {"String": str(digit)}, "content": f" {digit}"}
+                for digit in range(10)
+            ],
+            {"type": "Replace", "pattern": {"String": "<DAY>"}, "content": "Day draw:"},
+            {"type": "Replace", "pattern": {"String": "<NIGHT>"}, "content": "Night draw:"},
+            {"type": "Replace", "pattern": {"String": "<SEP>"}, "content": ". "},
+            {"type": "Replace", "pattern": {"String": "<PRED>"}, "content": "Prediction: "},
+            {"type": "Replace", "pattern": {"String": "<EOS>"}, "content": "."},
+        ]
+        # Add word token decoders
+        for word in WORD_TOKENS:
+            decoders.append({"type": "Replace", "pattern": {"String": word}, "content": f" {word}"})
+
         return {
             "version": "1.0",
             "truncation": None,
             "padding": None,
-            "added_tokens": [
-                {"id": 10, "content": "<PAD>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 11, "content": "<BOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 12, "content": "<EOS>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 13, "content": "<DAY>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
-                {"id": 14, "content": "<NIGHT>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
-                {"id": 15, "content": "<SEP>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
-                {"id": 16, "content": "<PRED>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": False},
-                {"id": 10, "content": "[UNK]", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-                {"id": 10, "content": "<UNK>", "single_word": False, "lstrip": False, "rstrip": False, "normalized": False, "special": True},
-            ],
+            "added_tokens": added_tokens,
             "normalizer": None,
             "pre_tokenizer": {
                 "type": "WhitespaceSplit"
@@ -726,17 +757,7 @@ model.eval()
             "post_processor": None,
             "decoder": {
                 "type": "Sequence",
-                "decoders": [
-                    *[
-                        {"type": "Replace", "pattern": {"String": str(digit)}, "content": f" {digit}"}
-                        for digit in range(10)
-                    ],
-                    {"type": "Replace", "pattern": {"String": "<DAY>"}, "content": "Day draw:"},
-                    {"type": "Replace", "pattern": {"String": "<NIGHT>"}, "content": "Night draw:"},
-                    {"type": "Replace", "pattern": {"String": "<SEP>"}, "content": ". "},
-                    {"type": "Replace", "pattern": {"String": "<PRED>"}, "content": "Prediction: "},
-                    {"type": "Replace", "pattern": {"String": "<EOS>"}, "content": "."},
-                ],
+                "decoders": decoders,
             },
             "model": {
                 "type": "WordLevel",
@@ -775,7 +796,25 @@ model.eval()
             json.dump(gen_cfg, f, indent=2)
 
         # 3. Tokenizer Assets
+        from idaho.pick3.pick3_llm_ticket_model import WORD_TOKENS
+
         max_len = getattr(config, "max_position_embeddings", getattr(config, "max_seq_len", 128))
+        # Build added_tokens_decoder with word tokens
+        added_tokens_decoder = {
+            "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
+            "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+            "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
+        }
+        for idx, word in enumerate(WORD_TOKENS):
+            token_id = 17 + idx
+            added_tokens_decoder[str(token_id)] = {
+                "content": word, "lstrip": False, "normalized": False,
+                "rstrip": False, "single_word": True, "special": False
+            }
         tok_cfg = {
             "tokenizer_class": "PreTrainedTokenizerFast",
             "model_type": "gpt2",
@@ -787,15 +826,7 @@ model.eval()
             "model_max_length": max_len,
             "clean_up_tokenization_spaces": False,
             "chat_template": cls.DEFAULT_CHAT_TEMPLATE,
-            "added_tokens_decoder": {
-                "10": {"content": "<PAD>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "11": {"content": "<BOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "12": {"content": "<EOS>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": True},
-                "13": {"content": "<DAY>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "14": {"content": "<NIGHT>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "15": {"content": "<SEP>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-                "16": {"content": "<PRED>", "lstrip": False, "normalized": False, "rstrip": False, "single_word": False, "special": False},
-            },
+            "added_tokens_decoder": added_tokens_decoder,
             "special_tokens": ["<PAD>", "<BOS>", "<EOS>", "[UNK]", "<UNK>"],
         }
         with (out_dir / "tokenizer_config.json").open("w", encoding="utf-8") as f:
@@ -806,6 +837,7 @@ model.eval()
         with (out_dir / "tokenizer.json").open("w", encoding="utf-8") as f:
             json.dump(tok_json, f, indent=2)
 
+        # Vocab dictionary with word tokens
         vocab_dict = {str(i): i for i in range(10)}
         vocab_dict.update({
             "<PAD>": 10,
@@ -818,6 +850,8 @@ model.eval()
             "[UNK]": 10,
             "<UNK>": 10,
         })
+        for idx, word in enumerate(WORD_TOKENS):
+            vocab_dict[word] = 17 + idx
         with (out_dir / "vocab.json").open("w", encoding="utf-8") as f:
             json.dump(vocab_dict, f, indent=2)
 

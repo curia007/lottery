@@ -33,7 +33,7 @@ class TestPick3LLM(unittest.TestCase):
         })
 
     def test_tokenizer(self):
-        self.assertEqual(self.tokenizer.vocab_size, 17)
+        self.assertEqual(self.tokenizer.vocab_size, 75)
         draw_tokens = self.tokenizer.encode_draw("Day", 1, 2, 3)
         self.assertEqual(draw_tokens, [self.tokenizer.day_id, 1, 2, 3])
         night_tokens = self.tokenizer.encode_draw("Night", 9, 0, 5)
@@ -85,7 +85,7 @@ class TestPick3LLM(unittest.TestCase):
             })
         df = pd.DataFrame(rows)
 
-        config = Pick3LLMConfig(vocab_size=17, max_seq_len=64, n_embd=32, n_head=2, n_layer=2)
+        config = Pick3LLMConfig(vocab_size=75, max_seq_len=64, n_embd=32, n_head=2, n_layer=2)
         model = Pick3LLM(config)
 
         inputs, targets = build_training_sequences(

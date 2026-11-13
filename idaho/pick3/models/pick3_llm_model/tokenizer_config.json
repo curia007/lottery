@@ -1,7 +1,7 @@
 {
   "tokenizer_class": "PreTrainedTokenizerFast",
   "model_type": "gpt2",
-  "vocab_size": 17,
+  "vocab_size": 75,
   "bos_token": "<BOS>",
   "eos_token": "<EOS>",
   "pad_token": "<PAD>",
@@ -64,6 +64,470 @@
       "normalized": false,
       "rstrip": false,
       "single_word": false,
+      "special": false
+    },
+    "17": {
+      "content": "the",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "18": {
+      "content": "next",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "19": {
+      "content": "winning",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "20": {
+      "content": "idaho",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "21": {
+      "content": "pick",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "22": {
+      "content": "lottery",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "23": {
+      "content": "numbers",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "24": {
+      "content": "are",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "25": {
+      "content": "draw",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "26": {
+      "content": "prediction",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "27": {
+      "content": "day",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "28": {
+      "content": "night",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "29": {
+      "content": "is",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "30": {
+      "content": "for",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "31": {
+      "content": "of",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "32": {
+      "content": "in",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "33": {
+      "content": "and",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "34": {
+      "content": "to",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "35": {
+      "content": "a",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "36": {
+      "content": "most",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "37": {
+      "content": "probable",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "38": {
+      "content": "combination",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "39": {
+      "content": "combinations",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "40": {
+      "content": "alternative",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "41": {
+      "content": "first",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "42": {
+      "content": "second",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "43": {
+      "content": "third",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "44": {
+      "content": "digit",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "45": {
+      "content": "digits",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "46": {
+      "content": "sequence",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "47": {
+      "content": "sum",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "48": {
+      "content": "odd",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "49": {
+      "content": "even",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "50": {
+      "content": "high",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "51": {
+      "content": "low",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "52": {
+      "content": "box",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "53": {
+      "content": "play",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "54": {
+      "content": "straight",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "55": {
+      "content": "any",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "56": {
+      "content": "order",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "57": {
+      "content": "permutations",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "58": {
+      "content": "confidence",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "59": {
+      "content": "position",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "60": {
+      "content": "positional",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "61": {
+      "content": "breakdown",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "62": {
+      "content": "coverage",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "63": {
+      "content": "result",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "64": {
+      "content": "results",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "65": {
+      "content": "recommended",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "66": {
+      "content": "based",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "67": {
+      "content": "analysis",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "68": {
+      "content": "Day",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "69": {
+      "content": "Night",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "70": {
+      "content": "Prediction",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "71": {
+      "content": ".",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "72": {
+      "content": ",",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "73": {
+      "content": ":",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
+      "special": false
+    },
+    "74": {
+      "content": "-",
+      "lstrip": false,
+      "normalized": false,
+      "rstrip": false,
+      "single_word": true,
       "special": false
     }
   },
