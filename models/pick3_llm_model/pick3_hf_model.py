@@ -729,21 +729,51 @@ model.eval()
                 "lstrip": False, "rstrip": False, "normalized": False, "special": False
             })
 
-        # Build decoder replacements
+        # Build decoder replacements for digits, control tokens, and safe word tokens.
+        # Only add Replace rules for word tokens that are NOT substrings of other
+        # word tokens, to avoid "a" inside "Day" producing "D ay".
+        # Control token replacements must come AFTER word token replacements so
+        # their output (e.g., "Day draw:") is not further modified.
+        # Determine which word tokens are safe to add as Replace rules
+        # (i.e., not a substring of any other word token)
+        word_set = set(WORD_TOKENS)
+        safe_word_decoders = []
+        for word in WORD_TOKENS:
+            is_substring = any(
+                word in other and len(word) < len(other)
+                for other in word_set
+                if other != word
+            )
+            if not is_substring:
+                safe_word_decoders.append(
+                    {"type": "Replace", "pattern": {"String": word}, "content": f" {word}"}
+                )
+
+        # Punctuation tokens that should NOT have leading spaces when decoded
+        # as word tokens, so they attach naturally to the preceding word.
+        punct_no_space = {".", ",", ":"}
+
         decoders = [
             *[
                 {"type": "Replace", "pattern": {"String": str(digit)}, "content": f" {digit}"}
                 for digit in range(10)
             ],
+        ]
+        # Word token decoders — punctuation tokens get no leading space
+        for word_decoder in safe_word_decoders:
+            word = word_decoder["pattern"]["String"]
+            if word in punct_no_space:
+                decoders.append({"type": "Replace", "pattern": {"String": word}, "content": word})
+            else:
+                decoders.append(word_decoder)
+        # Control token decoders last so their output isn't re-processed
+        decoders.extend([
             {"type": "Replace", "pattern": {"String": "<DAY>"}, "content": "Day draw:"},
             {"type": "Replace", "pattern": {"String": "<NIGHT>"}, "content": "Night draw:"},
             {"type": "Replace", "pattern": {"String": "<SEP>"}, "content": ". "},
             {"type": "Replace", "pattern": {"String": "<PRED>"}, "content": "Prediction: "},
             {"type": "Replace", "pattern": {"String": "<EOS>"}, "content": "."},
-        ]
-        # Add word token decoders
-        for word in WORD_TOKENS:
-            decoders.append({"type": "Replace", "pattern": {"String": word}, "content": f" {word}"})
+        ])
 
         return {
             "version": "1.0",

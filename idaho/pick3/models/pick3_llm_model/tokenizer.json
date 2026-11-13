@@ -688,41 +688,6 @@
       {
         "type": "Replace",
         "pattern": {
-          "String": "<DAY>"
-        },
-        "content": "Day draw:"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "<NIGHT>"
-        },
-        "content": "Night draw:"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "<SEP>"
-        },
-        "content": ". "
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "<PRED>"
-        },
-        "content": "Prediction: "
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "<EOS>"
-        },
-        "content": "."
-      },
-      {
-        "type": "Replace",
-        "pattern": {
           "String": "the"
         },
         "content": " the"
@@ -807,13 +772,6 @@
       {
         "type": "Replace",
         "pattern": {
-          "String": "is"
-        },
-        "content": " is"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
           "String": "for"
         },
         "content": " for"
@@ -824,13 +782,6 @@
           "String": "of"
         },
         "content": " of"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "in"
-        },
-        "content": " in"
       },
       {
         "type": "Replace",
@@ -849,13 +800,6 @@
       {
         "type": "Replace",
         "pattern": {
-          "String": "a"
-        },
-        "content": " a"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
           "String": "most"
         },
         "content": " most"
@@ -866,13 +810,6 @@
           "String": "probable"
         },
         "content": " probable"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "combination"
-        },
-        "content": " combination"
       },
       {
         "type": "Replace",
@@ -908,13 +845,6 @@
           "String": "third"
         },
         "content": " third"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "digit"
-        },
-        "content": " digit"
       },
       {
         "type": "Replace",
@@ -1017,13 +947,6 @@
       {
         "type": "Replace",
         "pattern": {
-          "String": "position"
-        },
-        "content": " position"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
           "String": "positional"
         },
         "content": " positional"
@@ -1041,13 +964,6 @@
           "String": "coverage"
         },
         "content": " coverage"
-      },
-      {
-        "type": "Replace",
-        "pattern": {
-          "String": "result"
-        },
-        "content": " result"
       },
       {
         "type": "Replace",
@@ -1103,21 +1019,21 @@
         "pattern": {
           "String": "."
         },
-        "content": " ."
+        "content": "."
       },
       {
         "type": "Replace",
         "pattern": {
           "String": ","
         },
-        "content": " ,"
+        "content": ","
       },
       {
         "type": "Replace",
         "pattern": {
           "String": ":"
         },
-        "content": " :"
+        "content": ":"
       },
       {
         "type": "Replace",
@@ -1125,6 +1041,41 @@
           "String": "-"
         },
         "content": " -"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<DAY>"
+        },
+        "content": "Day draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<NIGHT>"
+        },
+        "content": "Night draw:"
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<SEP>"
+        },
+        "content": ". "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<PRED>"
+        },
+        "content": "Prediction: "
+      },
+      {
+        "type": "Replace",
+        "pattern": {
+          "String": "<EOS>"
+        },
+        "content": "."
       }
     ]
   },
