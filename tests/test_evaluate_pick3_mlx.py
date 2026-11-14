@@ -62,6 +62,7 @@ class TestEvaluatePick3MLX(unittest.TestCase):
             batch_size=2,
             max_len=32,
             tokenizer=self.tokenizer,
+            token_aware=False,
         )
 
         if mx is not None:
@@ -163,6 +164,66 @@ class TestEvaluatePick3MLX(unittest.TestCase):
         resolved = resolve_default_jsonl()
         self.assertEqual(resolved.name, "idaho_pick3_last_picks.jsonl")
         self.assertEqual(resolved.parent.name, "data")
+
+    def test_tokens_per_draw(self):
+        """Each draw encodes to 5 tokens: <DRAW_TAG> + d1 + d2 + d3 + <SEP>"""
+        self.assertEqual(Pick3EvalTokenizer.tokens_per_draw(), 5)
+
+    def test_max_draws_for_token_budget(self):
+        """Token-aware window calculation for various sequence lengths."""
+        # max_seq_len=128: overhead=3, reserve=4, available=121, draws=121//5=24
+        self.assertEqual(Pick3EvalTokenizer.max_draws_for_token_budget(128), 24)
+        # max_seq_len=64: overhead=3, reserve=4, available=57, draws=57//5=11
+        self.assertEqual(Pick3EvalTokenizer.max_draws_for_token_budget(64), 11)
+        # max_seq_len=20: overhead=3, reserve=4, available=13, draws=13//5=2
+        self.assertEqual(Pick3EvalTokenizer.max_draws_for_token_budget(20), 2)
+        # Very small budget: should return 0
+        self.assertEqual(Pick3EvalTokenizer.max_draws_for_token_budget(5), 0)
+
+    def test_build_token_aware_window(self):
+        """Token-aware window builds prompt within token budget."""
+        tok = Pick3EvalTokenizer()
+        # With 128 max tokens, should fit all 6 sample records (6 * 5 = 30 tokens)
+        prompt, prompt_len = tok.build_token_aware_window(
+            records=self.sample_records,
+            target_draw={"draw": "Night"},
+            max_seq_len=128,
+        )
+        # Prompt = BOS(1) + 6 draws * 5 tokens + PRED(1) + target_tag(1) = 33 tokens
+        self.assertEqual(prompt_len, 33)
+        self.assertEqual(prompt[0], tok.bos_id)
+        self.assertEqual(prompt[-2], tok.pred_id)
+
+    def test_token_aware_batch_construction(self):
+        """Batch construction with token_aware=True uses optimal window size."""
+        # Use enough records for token-aware window (need > window + batch)
+        extended_records = self.sample_records * 5  # 30 records
+        x, y, mask = create_evaluation_batch(
+            records=extended_records,
+            window_size=2,
+            batch_size=4,
+            max_len=128,
+            tokenizer=self.tokenizer,
+            token_aware=True,
+        )
+        # Should work without error and produce batches
+        if mx is not None:
+            self.assertEqual(x.shape[1], 128)
+            self.assertGreater(x.shape[0], 0)
+
+    def test_token_aware_disabled_falls_back_to_window_size(self):
+        """When token_aware=False, uses the specified window_size."""
+        x, y, mask = create_evaluation_batch(
+            records=self.sample_records,
+            window_size=2,
+            batch_size=2,
+            max_len=32,
+            tokenizer=self.tokenizer,
+            token_aware=False,
+        )
+        # Should work with fixed window_size=2
+        if mx is not None:
+            self.assertEqual(x.shape[0], 2)  # 2 batches
 
 
 if __name__ == "__main__":

@@ -250,6 +250,227 @@ class Pick3Tokenizer:
         draw_tag = self.day_id if draw_type.strip().lower().startswith("day") else self.night_id
         return [draw_tag, int(d1), int(d2), int(d3)]
 
+    @staticmethod
+    def tokens_per_draw() -> int:
+        """Returns the number of tokens used to encode a single historical draw.
+        
+        Each draw encodes to: <DRAW_TAG> + d1 + d2 + d3 + <SEP> = 5 tokens.
+        """
+        return 5
+
+    @staticmethod
+    def prompt_overhead_tokens() -> int:
+        """Returns the fixed overhead tokens for a prompt (BOS + PRED + target draw tag)."""
+        return 3  # <BOS> + <PRED> + <DRAW_TAG>
+
+    @staticmethod
+    def target_tokens() -> int:
+        """Returns the number of tokens for the target draw (3 digits + EOS)."""
+        return 4  # d1 + d2 + d3 + <EOS>
+
+    @staticmethod
+    def max_draws_for_token_budget(max_seq_len: int, reserve_for_target: int = 4) -> int:
+        """Calculates the maximum number of historical draws that fit within a token budget.
+        
+        Args:
+            max_seq_len: Maximum sequence length in tokens (model's max_position_embeddings).
+            reserve_for_target: Tokens reserved for the target draw (default 4: 3 digits + EOS).
+        
+        Returns:
+            Maximum number of historical draws that fit within the budget.
+        
+        Formula:
+            total_tokens = BOS + (draws * 6) + PRED + target_tag + target_digits + EOS
+            total_tokens = 1 + (draws * 6) + 2 + 4 = 7 + (draws * 6)
+            For input/target shift: total_tokens - 1 <= max_seq_len
+            Therefore: draws <= (max_seq_len - 7) / 6
+        """
+        # Total sequence = BOS + (draws * 6) + PRED + target_tag + 3 digits + EOS
+        # = 1 + (draws * 6) + 2 + 4 = 7 + (draws * 6)
+        # For autoregressive shift, we need (total - 1) <= max_seq_len
+        # So: draws <= (max_seq_len - 6) / 6
+        overhead = 1 + 2  # BOS + PRED + target_tag
+        tokens_per_draw = 5  # <DRAW_TAG> + d1 + d2 + d3 + <SEP>
+        available = max_seq_len - overhead - reserve_for_target
+        if available <= 0:
+            return 0
+        return available // tokens_per_draw
+
+    def build_token_aware_window(
+        self,
+        records: Sequence[Dict[str, Any]],
+        target_draw: Dict[str, Any],
+        max_seq_len: int = 128,
+        min_draws: int = 1,
+    ) -> Tuple[List[int], int]:
+        """Builds a token-aware sliding window prompt that maximizes historical context.
+        
+        Dynamically calculates how many historical draws fit within the token budget,
+        ensuring the full sequence (prompt + target) stays within max_seq_len.
+        
+        Args:
+            records: Chronologically sorted draw records (oldest first).
+            target_draw: The target draw to predict.
+            max_seq_len: Maximum sequence length in tokens.
+            min_draws: Minimum number of historical draws to include.
+        
+        Returns:
+            Tuple of (prompt_tokens, prompt_length) where prompt_length is the
+            number of tokens in the prompt before the target digits.
+        """
+        max_draws = self.max_draws_for_token_budget(max_seq_len)
+        # Use the available records, capped by max_draws and at least min_draws
+        num_draws = max(min_draws, min(max_draws, len(records)))
+        history = list(records)[-num_draws:] if num_draws < len(records) else list(records)
+
+        # Encode the prompt
+        prompt = self.encode_history_prompt(history, target_draw.get("draw", "Night"))
+        return prompt, len(prompt)
+
+    def count_tokens(self, text: str) -> int:
+        """Counts the approximate number of tokens in a plain-text string.
+        
+        Uses the tokenizer's vocabulary to estimate token count by matching
+        known tokens (digits, control tokens, word tokens) against the text.
+        
+        Args:
+            text: Plain-text string to count tokens for.
+        
+        Returns:
+            Estimated token count.
+        """
+        if not text:
+            return 0
+        
+        count = 0
+        # Build a sorted list of all vocab tokens by length (longest first) for greedy matching
+        all_tokens = sorted(self.vocab, key=len, reverse=True)
+        remaining = text
+        while remaining.strip():
+            matched = False
+            for token in all_tokens:
+                # Check for control tokens (e.g., <DAY>, <BOS>) and their text equivalents
+                if token in remaining:
+                    count += 1
+                    remaining = remaining.replace(token, " ", 1)
+                    matched = True
+                    break
+            # Also check for text equivalents of control tokens
+            if not matched:
+                text_equivs = ["Day draw:", "Night draw:", "Day", "Night",
+                               "Prediction:", "Prediction", "<BOS>", "<EOS>",
+                               "<SEP>", "<PRED>", "<DAY>", "<NIGHT>"]
+                for te in text_equivs:
+                    if te in remaining:
+                        count += 1
+                        remaining = remaining.replace(te, " ", 1)
+                        matched = True
+                        break
+            if not matched:
+                # Count remaining characters as individual tokens (rough estimate)
+                words = remaining.strip().split()
+                count += len(words)
+                break
+        return count
+
+    def truncate_to_fit(
+        self,
+        records: Sequence[Dict[str, Any]],
+        target_draw: Dict[str, Any],
+        max_seq_len: int = 128,
+        reserve_for_target: int = 4,
+        min_draws: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Drops the oldest draw records until the encoded prompt fits within max_seq_len.
+        
+        Iteratively removes the oldest (first) draw from the records list until
+        the full sequence (prompt + target digits + EOS) fits safely below the
+        server's maximum context length.
+        
+        Args:
+            records: Chronologically sorted draw records (oldest first).
+            target_draw: The target draw to predict (must have 'draw' key).
+            max_seq_len: Maximum sequence length in tokens (server's limit).
+            reserve_for_target: Tokens reserved for the target draw (default 4).
+            min_draws: Minimum number of draws to keep even if budget is tight.
+        
+        Returns:
+            A new list of draw records with the oldest entries removed so the
+            encoded sequence fits within max_seq_len.
+        """
+        if not records:
+            return []
+
+        records_list = list(records)
+        
+        # Quick check: if the max_draws calculation already fits, return as-is
+        max_allowed = self.max_draws_for_token_budget(max_seq_len, reserve_for_target)
+        if len(records_list) <= max_allowed:
+            return records_list
+
+        # Iteratively drop oldest draws until the encoded sequence fits
+        # Start with the maximum allowed and verify by encoding
+        truncated = records_list[-max_allowed:]
+        
+        # Verify by actually encoding
+        prompt = self.encode_history_prompt(truncated, target_draw.get("draw", "Night"))
+        total_tokens = len(prompt) + reserve_for_target  # prompt + target digits + EOS
+        
+        # If still too long, keep dropping from the front (oldest)
+        while total_tokens > max_seq_len and len(truncated) > min_draws:
+            truncated = truncated[1:]  # Drop the oldest draw
+            prompt = self.encode_history_prompt(truncated, target_draw.get("draw", "Night"))
+            total_tokens = len(prompt) + reserve_for_target
+        
+        return truncated
+
+    def truncate_history_summary(
+        self,
+        history_summary: str,
+        max_tokens: int = 128,
+        reserve_for_prompt: int = 20,
+    ) -> str:
+        """Truncates a plain-text history summary to fit within a token budget.
+        
+        Splits the summary by draw lines (each line representing a historical draw)
+        and removes the oldest lines until the estimated token count fits.
+        
+        Args:
+            history_summary: Plain-text summary of historical draws.
+            max_tokens: Maximum total tokens allowed (server's context limit).
+            reserve_for_prompt: Tokens reserved for the prediction prompt text.
+        
+        Returns:
+            Truncated history summary string that fits within the token budget.
+        """
+        if not history_summary:
+            return ""
+        
+        available = max_tokens - reserve_for_prompt
+        if available <= 0:
+            return ""
+        
+        # Split by lines, treating each line as a draw entry
+        lines = history_summary.strip().split("\n")
+        if not lines:
+            return ""
+        
+        # Estimate tokens per line and build from the newest (end) backward
+        truncated_lines = []
+        current_tokens = 0
+        
+        # Process lines in reverse (newest first), then reverse back
+        for line in reversed(lines):
+            line_tokens = max(1, self.count_tokens(line))
+            if current_tokens + line_tokens > available and truncated_lines:
+                break
+            truncated_lines.append(line)
+            current_tokens += line_tokens
+        
+        # Reverse to restore chronological order (oldest first)
+        truncated_lines.reverse()
+        return "\n".join(truncated_lines)
+
     def encode_history_prompt(
         self,
         history_draws: Sequence[Dict[str, Any]],
@@ -953,10 +1174,23 @@ class Pick3LLM(nn.Module):
         draw_type: str = "Night",
         temperature: float = 0.8,
         include_narrative: bool = False,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
+        stop: Optional[List[int]] = None,
     ) -> str:
         """
         Generates and decodes the model response directly into localized natural language text.
         e.g. 'The next winning Pick 3 numbers are 1 2 3.'
+        
+        Args:
+            prompt_tokens: Input token sequence.
+            history_draws: Historical draw records for prompt construction.
+            draw_type: Day or Night draw.
+            temperature: Sampling temperature (lower = more deterministic).
+            include_narrative: Whether to include full narrative response.
+            frequency_penalty: Penalizes tokens based on their frequency (0.0-2.0).
+            presence_penalty: Penalizes tokens based on whether they appear (0.0-2.0).
+            stop: List of token IDs that stop generation when encountered.
         """
         tokenizer = Pick3Tokenizer()
         if prompt_tokens is None:
@@ -964,19 +1198,39 @@ class Pick3LLM(nn.Module):
                 raise ValueError("Either prompt_tokens or history_draws must be provided")
             prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
 
+        stop_ids = set(stop) if stop else set()
         curr_input = list(prompt_tokens)
         gen_tokens: List[int] = []
-        for _ in range(3):
+        token_counts: Counter = Counter()
+
+        for _ in range(10):  # Max generation length
             arr = mx.array([curr_input], dtype=mx.int32)
             step_logits = self(arr)[:, -1, :10]
+
+            # Apply frequency and presence penalties
+            if frequency_penalty > 0.0 or presence_penalty > 0.0:
+                freq_penalties = mx.array([float(token_counts.get(int(t), 0)) for t in range(10)])
+                pres_penalties = mx.array([1.0 if token_counts.get(int(t), 0) > 0 else 0.0 for t in range(10)])
+                step_logits = step_logits - frequency_penalty * freq_penalties - presence_penalty * pres_penalties
+
             if temperature <= 0.01:
                 next_tok = int(mx.argmax(step_logits, axis=-1).item())
             else:
                 scaled = step_logits / max(temperature, 1e-4)
                 probs = mx.softmax(scaled, axis=-1)
                 next_tok = int(mx.random.categorical(scaled).item())
+
             gen_tokens.append(next_tok)
+            token_counts[next_tok] += 1
             curr_input.append(next_tok)
+
+            # Check stop condition
+            if next_tok in stop_ids:
+                break
+
+            # Stop after 3 digits if no stop tokens configured
+            if len(gen_tokens) == 3 and not stop_ids:
+                break
 
         return tokenizer.decode_response_text(
             gen_tokens,
@@ -990,26 +1244,59 @@ class Pick3LLM(nn.Module):
         history_draws: Optional[Sequence[Dict[str, Any]]] = None,
         draw_type: str = "Night",
         temperature: float = 0.8,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
+        stop: Optional[List[int]] = None,
     ) -> Dict[str, str]:
-        """Generates localized prediction dictionary with primary, alternatives, and permutations."""
+        """Generates localized prediction dictionary with primary, alternatives, and permutations.
+        
+        Args:
+            prompt_tokens: Input token sequence.
+            history_draws: Historical draw records for prompt construction.
+            draw_type: Day or Night draw.
+            temperature: Sampling temperature (lower = more deterministic).
+            frequency_penalty: Penalizes tokens based on their frequency (0.0-2.0).
+            presence_penalty: Penalizes tokens based on whether they appear (0.0-2.0).
+            stop: List of token IDs that stop generation when encountered.
+        """
         tokenizer = Pick3Tokenizer()
         if prompt_tokens is None:
             if history_draws is None:
                 raise ValueError("Either prompt_tokens or history_draws must be provided")
             prompt_tokens = tokenizer.encode_history_prompt(history_draws, target_draw_type=draw_type)
 
+        stop_ids = set(stop) if stop else set()
         curr_input = list(prompt_tokens)
         gen_tokens: List[int] = []
-        for _ in range(3):
+        token_counts: Counter = Counter()
+
+        for _ in range(10):  # Max generation length
             arr = mx.array([curr_input], dtype=mx.int32)
             step_logits = self(arr)[0, -1, :10]
+
+            # Apply frequency and presence penalties
+            if frequency_penalty > 0.0 or presence_penalty > 0.0:
+                freq_penalties = mx.array([float(token_counts.get(int(t), 0)) for t in range(10)])
+                pres_penalties = mx.array([1.0 if token_counts.get(int(t), 0) > 0 else 0.0 for t in range(10)])
+                step_logits = step_logits - frequency_penalty * freq_penalties - presence_penalty * pres_penalties
+
             if temperature <= 0.01:
                 next_tok = int(mx.argmax(step_logits, axis=-1).item())
             else:
                 scaled = step_logits / max(temperature, 1e-4)
                 next_tok = int(mx.random.categorical(scaled).item())
+
             gen_tokens.append(next_tok)
+            token_counts[next_tok] += 1
             curr_input.append(next_tok)
+
+            # Check stop condition
+            if next_tok in stop_ids:
+                break
+
+            # Stop after 3 digits if no stop tokens configured
+            if len(gen_tokens) == 3 and not stop_ids:
+                break
 
         return tokenizer.decode_response(
             gen_tokens,
@@ -1119,12 +1406,67 @@ class OMLXPick3Client:
         model_name: str = "pick3_llm_model",
         timeout: float = 15.0,
         api_key: Optional[str] = None,
+        max_context_tokens: int = 128,
+        max_history: Optional[int] = None,
+        frequency_penalty: float = 0.5,
+        presence_penalty: float = 0.5,
+        stop_sequences: Optional[List[str]] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.timeout = timeout
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "EMPTY")
         self.tokenizer = Pick3Tokenizer()
+        self.max_context_tokens = max_context_tokens
+        self.max_history = max_history
+        self.frequency_penalty = frequency_penalty
+        self.presence_penalty = presence_penalty
+        self.stop_sequences = stop_sequences if stop_sequences is not None else ["<EOS>", "[EOS]"]
+
+    def sliding_window_messages(
+        self,
+        messages: List[Dict[str, str]],
+        max_history: Optional[int] = None,
+    ) -> List[Dict[str, str]]:
+        """Apply a message-count sliding window, keeping system instructions intact.
+
+        Preserves all messages with role 'system' and keeps only the last
+        `max_history` non-system messages (e.g., the previous turn + the new
+        user prompt). If `max_history` is None, returns the messages unchanged.
+
+        Args:
+            messages: Full conversation message list.
+            max_history: Maximum number of non-system messages to keep.
+
+        Returns:
+            A new message list with system messages preserved and non-system
+            messages truncated to the last `max_history` entries.
+        """
+        limit = max_history if max_history is not None else self.max_history
+        if limit is None or limit <= 0:
+            return list(messages)
+
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        non_system_msgs = [m for m in messages if m.get("role") != "system"]
+
+        if len(non_system_msgs) <= limit:
+            return list(messages)
+
+        # Keep only the last `limit` non-system messages
+        non_system_msgs = non_system_msgs[-limit:]
+        return system_msgs + non_system_msgs
+
+    def reset_session(self) -> None:
+        """Reset the session by clearing all accumulated state.
+        
+        Clears conversation history, resets penalty accumulators, and prepares
+        a fresh state for new predictions. This helps avoid poisoned responses
+        from previous conversation turns.
+        """
+        # Reset generation parameters to defaults
+        self.frequency_penalty = 0.5
+        self.presence_penalty = 0.5
+        self.stop_sequences = ["<EOS>", "[EOS]"]
 
     def extract_delta_content(self, chunk: Any) -> str:
         """
@@ -1195,8 +1537,57 @@ class OMLXPick3Client:
         resp = self.parse_response(raw_output, draw_type=draw_type)
         return resp["narrative"] if include_narrative else resp["primary"]
 
-    def create_chat_prompt(self, draw_type: str = "Night", history_summary: Optional[str] = None) -> List[Dict[str, str]]:
-        """Constructs an OpenAI-compatible messages list conditioned for Pick 3 prediction."""
+    def create_chat_prompt(
+        self,
+        draw_type: str = "Night",
+        history_summary: Optional[str] = None,
+        history_records: Optional[Sequence[Dict[str, Any]]] = None,
+        max_context_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        max_history: Optional[int] = None,
+    ) -> List[Dict[str, str]]:
+        """Constructs an OpenAI-compatible messages list conditioned for Pick 3 prediction.
+
+        Automatically truncates oversized history to fit within the server's maximum
+        context length by dropping the oldest entries first.
+        If `messages` is provided, applies a message-count sliding window to keep
+        only the last `max_history` non-system messages while preserving system instructions.
+
+        Args:
+            draw_type: Day or Night draw.
+            history_summary: Plain-text history summary (truncated if too long).
+            history_records: Structured draw records (truncated if too long).
+            max_context_tokens: Override the client's max_context_tokens limit.
+            messages: Existing conversation messages list (applies sliding window).
+            max_history: Max non-system messages to keep (sliding window).
+        """
+        budget = max_context_tokens if max_context_tokens is not None else self.max_context_tokens
+
+        # If an existing messages list is provided, apply the sliding window
+        if messages:
+            return self.sliding_window_messages(messages, max_history)
+
+        # Otherwise, build a new single-turn prompt
+        # Truncate structured records if provided
+        if history_records:
+            target = {"draw": draw_type}
+            truncated = self.tokenizer.truncate_to_fit(
+                history_records, target, max_seq_len=budget
+            )
+            # Build summary from truncated records
+            if truncated:
+                lines = []
+                for r in truncated:
+                    dt = r.get("draw", "Night")
+                    lines.append(f"{dt}: {r['num1']} {r['num2']} {r['num3']}")
+                history_summary = "\n".join(lines)
+
+        # Truncate plain-text summary if too long
+        if history_summary:
+            history_summary = self.tokenizer.truncate_history_summary(
+                history_summary, max_tokens=budget
+            )
+
         content = f"Predict the next Pick 3 {draw_type} draw numbers."
         if history_summary:
             content = f"{history_summary}\n{content}"
@@ -1215,19 +1606,41 @@ class OMLXPick3Client:
         temperature: float = 0.8,
         max_tokens: int = 16,
         history_summary: Optional[str] = None,
+        history_records: Optional[Sequence[Dict[str, Any]]] = None,
+        max_context_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        max_history: Optional[int] = None,
+        frequency_penalty: Optional[float] = None,
+        presence_penalty: Optional[float] = None,
+        stop_sequences: Optional[List[str]] = None,
     ) -> Any:
         """
         Streams chat completion delta tokens from oMLX / mlx-lm endpoint via Server-Sent Events (SSE).
         Safely handles None delta contents and yields text deltas in real time.
+        Automatically truncates history to fit within the server's context limit.
+        If `messages` is provided, applies a message-count sliding window.
+        Supports frequency/presence penalties and custom stop sequences.
         """
+        freq_pen = frequency_penalty if frequency_penalty is not None else self.frequency_penalty
+        pres_pen = presence_penalty if presence_penalty is not None else self.presence_penalty
+        stops = stop_sequences if stop_sequences is not None else self.stop_sequences
         endpoint = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model_name,
-            "messages": self.create_chat_prompt(draw_type=draw_type, history_summary=history_summary),
+            "messages": self.create_chat_prompt(
+                draw_type=draw_type,
+                history_summary=history_summary,
+                history_records=history_records,
+                max_context_tokens=max_context_tokens,
+                messages=messages,
+                max_history=max_history,
+            ),
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": True,
-            "stop": ["<EOS>", "[EOS]"],
+            "stop": stops,
+            "frequency_penalty": freq_pen,
+            "presence_penalty": pres_pen,
         }
         headers = {
             "Content-Type": "application/json",
@@ -1263,9 +1676,19 @@ class OMLXPick3Client:
         temperature: float = 0.8,
         max_tokens: int = 16,
         history_summary: Optional[str] = None,
+        history_records: Optional[Sequence[Dict[str, Any]]] = None,
+        max_context_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        max_history: Optional[int] = None,
+        frequency_penalty: Optional[float] = None,
+        presence_penalty: Optional[float] = None,
+        stop_sequences: Optional[List[str]] = None,
     ) -> Tuple[List[str], Dict[str, str]]:
         """
         Consumes streaming tokens safely and returns both the stream tokens and final parsed localized prediction.
+        Automatically truncates history to fit within the server's context limit.
+        If `messages` is provided, applies a message-count sliding window.
+        Supports frequency/presence penalties and custom stop sequences.
         """
         tokens: List[str] = []
         for token in self.stream_chat(
@@ -1273,6 +1696,13 @@ class OMLXPick3Client:
             temperature=temperature,
             max_tokens=max_tokens,
             history_summary=history_summary,
+            history_records=history_records,
+            max_context_tokens=max_context_tokens,
+            messages=messages,
+            max_history=max_history,
+            frequency_penalty=frequency_penalty,
+            presence_penalty=presence_penalty,
+            stop_sequences=stop_sequences,
         ):
             if token:
                 tokens.append(token)
@@ -1286,18 +1716,41 @@ class OMLXPick3Client:
         temperature: float = 0.8,
         max_tokens: int = 16,
         use_chat: bool = True,
+        history_summary: Optional[str] = None,
+        history_records: Optional[Sequence[Dict[str, Any]]] = None,
+        max_context_tokens: Optional[int] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        max_history: Optional[int] = None,
+        frequency_penalty: Optional[float] = None,
+        presence_penalty: Optional[float] = None,
+        stop_sequences: Optional[List[str]] = None,
     ) -> Dict[str, str]:
         """
         Queries the running oMLX server and returns the parsed, localized prediction dictionary.
+        Automatically truncates history to fit within the server's context limit.
+        If `messages` is provided, applies a message-count sliding window.
+        Supports frequency/presence penalties and custom stop sequences.
         """
+        freq_pen = frequency_penalty if frequency_penalty is not None else self.frequency_penalty
+        pres_pen = presence_penalty if presence_penalty is not None else self.presence_penalty
+        stops = stop_sequences if stop_sequences is not None else self.stop_sequences
         endpoint = f"{self.base_url}/chat/completions" if use_chat else f"{self.base_url}/completions"
         if use_chat:
             payload = {
                 "model": self.model_name,
-                "messages": self.create_chat_prompt(draw_type=draw_type),
+                "messages": self.create_chat_prompt(
+                    draw_type=draw_type,
+                    history_summary=history_summary,
+                    history_records=history_records,
+                    max_context_tokens=max_context_tokens,
+                    messages=messages,
+                    max_history=max_history,
+                ),
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "stop": ["<EOS>", "[EOS]"],
+                "stop": stops,
+                "frequency_penalty": freq_pen,
+                "presence_penalty": pres_pen,
             }
         else:
             payload = {
@@ -1305,7 +1758,9 @@ class OMLXPick3Client:
                 "prompt": self.create_completion_prompt(draw_type=draw_type),
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "stop": ["<EOS>", "[EOS]"],
+                "stop": stops,
+                "frequency_penalty": freq_pen,
+                "presence_penalty": pres_pen,
             }
 
         headers = {

@@ -131,33 +131,62 @@ def build_training_and_validation_datasets(
     max_seq_len: int = 128,
     val_split: float = 0.2,
     target_loss_only: bool = True,
+    token_aware: bool = True,
 ) -> Tuple[Tuple[mx.array, mx.array, mx.array], Optional[Tuple[mx.array, mx.array, mx.array]]]:
     """
-    Build training and validation datasets from draw records.
-    Returns (train_data, val_data) where each is (x, y, mask) tuple.
+    Build training and validation datasets from draw records using a token-aware
+    sliding window that maximizes historical context within the model's sequence budget.
+    
+    Args:
+        records: Chronologically sorted draw records.
+        tokenizer: Pick3Tokenizer instance.
+        window_size: Minimum number of historical draws (used as fallback if token_aware=False).
+        max_seq_len: Maximum sequence length in tokens.
+        val_split: Fraction of data for validation.
+        target_loss_only: Whether to mask only target positions for loss.
+        token_aware: If True, dynamically calculate optimal window size based on token budget.
+    
+    Returns:
+        (train_data, val_data) where each is (x, y, mask) tuple.
     """
     input_list: List[List[int]] = []
     target_list: List[List[int]] = []
     mask_list: List[List[float]] = []
 
     total = len(records)
-    val_start = int(total * (1.0 - val_split))
+    
+    # Calculate token-aware window size
+    if token_aware and hasattr(tokenizer, 'max_draws_for_token_budget'):
+        effective_window = tokenizer.max_draws_for_token_budget(max_seq_len)
+        effective_window = max(effective_window, window_size)  # At least window_size draws
+    else:
+        effective_window = window_size
 
-    for i in range(window_size, total):
-        history = records[i - window_size:i]
+    for i in range(effective_window, total):
+        history = records[i - effective_window:i]
         target = records[i]
 
-        # Encode prompt
-        prompt = tokenizer.encode_history_prompt(
-            [{"draw": d.draw_normalized, "num1": d.num1, "num2": d.num2, "num3": d.num3} for d in history],
-            target.draw_normalized,
-        )
-        prompt_len = len(prompt)
+        # Encode prompt using token-aware window if available
+        if token_aware and hasattr(tokenizer, 'build_token_aware_window'):
+            history_dicts = [
+                {"draw": d.draw_normalized, "num1": d.num1, "num2": d.num2, "num3": d.num3}
+                for d in history
+            ]
+            target_dict = {"draw": target.draw_normalized}
+            prompt, prompt_len = tokenizer.build_token_aware_window(
+                history_dicts, target_dict, max_seq_len
+            )
+        else:
+            prompt = tokenizer.encode_history_prompt(
+                [{"draw": d.draw_normalized, "num1": d.num1, "num2": d.num2, "num3": d.num3} for d in history],
+                target.draw_normalized,
+            )
+            prompt_len = len(prompt)
 
         # Append target digits and EOS
         full_seq = prompt + [int(target.num1), int(target.num2), int(target.num3), tokenizer.eos_id]
 
-        # Truncate if needed
+        # Truncate if needed (safety check)
         if len(full_seq) > max_seq_len + 1:
             excess = len(full_seq) - (max_seq_len + 1)
             full_seq = [tokenizer.bos_id] + full_seq[1 + excess:]
@@ -188,9 +217,7 @@ def build_training_and_validation_datasets(
         mask_list.append(mask)
 
     # Split into train and validation
-    # val_start is the index in records where validation begins
-    # The first usable sample is at index window_size, so we need to adjust
-    total_samples = total - window_size
+    total_samples = total - effective_window
     val_start_sample = int(total_samples * val_split)
     train_end_sample = total_samples - val_start_sample
 

@@ -344,5 +344,392 @@ class TestPick3LLM(unittest.TestCase):
             self.assertTrue((df_combo_out["draw"] == "Combo").all())
 
 
+    def test_tokenizer_count_tokens(self):
+        """Tokenizer count_tokens estimates token count for plain text."""
+        tok = Pick3Tokenizer()
+        # Empty string
+        self.assertEqual(tok.count_tokens(""), 0)
+        # Simple digits
+        count = tok.count_tokens("6 5 2")
+        self.assertGreater(count, 0)
+        # Longer text
+        count = tok.count_tokens("Day: 1 2 3 Night: 4 5 6")
+        self.assertGreater(count, 3)
+
+    def test_tokenizer_truncate_to_fit(self):
+        """Truncate_to_fit drops oldest draws until prompt fits budget."""
+        tok = Pick3Tokenizer()
+        # Create 50 draw records (more than will fit in 64 tokens)
+        records = [
+            {"draw": "Day" if i % 2 == 0 else "Night", "num1": i % 10, "num2": (i + 1) % 10, "num3": (i + 2) % 10}
+            for i in range(50)
+        ]
+        target = {"draw": "Night"}
+
+        # With max_seq_len=64, should truncate significantly
+        truncated = tok.truncate_to_fit(records, target, max_seq_len=64)
+        self.assertLess(len(truncated), 50)
+        # Verify the truncated set fits
+        prompt = tok.encode_history_prompt(truncated, target["draw"])
+        total = len(prompt) + 4  # +4 for target digits + EOS
+        self.assertLessEqual(total, 64)
+
+        # With max_seq_len=128, should fit more
+        truncated_128 = tok.truncate_to_fit(records, target, max_seq_len=128)
+        self.assertGreaterEqual(len(truncated_128), len(truncated))
+
+        # With very large budget, all records should fit
+        all_fit = tok.truncate_to_fit(records, target, max_seq_len=512)
+        self.assertEqual(len(all_fit), 50)
+
+        # Empty records
+        self.assertEqual(tok.truncate_to_fit([], target, max_seq_len=64), [])
+
+    def test_tokenizer_truncate_history_summary(self):
+        """Truncate_history_summary removes oldest lines until text fits budget."""
+        tok = Pick3Tokenizer()
+        # Create a long history summary (many draw lines)
+        lines = [f"Day: {i} {(i+1)%10} {(i+2)%10}" for i in range(30)]
+        summary = "\n".join(lines)
+
+        # Truncate to fit within a small budget
+        truncated = tok.truncate_history_summary(summary, max_tokens=30)
+        truncated_lines = truncated.strip().split("\n") if truncated else []
+        self.assertLess(len(truncated_lines), 30)
+
+        # With large budget, should keep most lines
+        truncated_large = tok.truncate_history_summary(summary, max_tokens=200)
+        self.assertGreaterEqual(len(truncated_large.strip().split("\n")), len(truncated_lines))
+
+        # Empty summary
+        self.assertEqual(tok.truncate_history_summary("", max_tokens=64), "")
+
+    def test_client_truncates_oversized_history(self):
+        """OMLXPick3Client auto-truncates history records to fit context limit."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(base_url="http://localhost:8000/v1", max_context_tokens=64)
+
+        # Create 50 draw records (too many for 64-token budget)
+        records = [
+            {"draw": "Day" if i % 2 == 0 else "Night", "num1": i % 10, "num2": (i + 1) % 10, "num3": (i + 2) % 10}
+            for i in range(50)
+        ]
+
+        # With history_records, should truncate and build prompt
+        messages = client.create_chat_prompt(
+            draw_type="Night",
+            history_records=records,
+        )
+        self.assertEqual(len(messages), 1)
+        # The content should include some history (not all 50)
+        content = messages[0]["content"]
+        self.assertIn("Predict the next Pick 3 Night draw numbers.", content)
+        # Should have some history lines
+        history_part = content.split("\nPredict")[0]
+        history_lines = [l for l in history_part.strip().split("\n") if l.strip()]
+        self.assertLess(len(history_lines), 50)
+        self.assertGreater(len(history_lines), 0)
+
+    def test_client_truncates_text_history_summary(self):
+        """OMLXPick3Client auto-truncates plain-text history summaries."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(base_url="http://localhost:8000/v1", max_context_tokens=40)
+
+        # Create a long text summary
+        lines = [f"Day: {i} {(i+1)%10} {(i+2)%10}" for i in range(30)]
+        summary = "\n".join(lines)
+
+        messages = client.create_chat_prompt(
+            draw_type="Day",
+            history_summary=summary,
+        )
+        content = messages[0]["content"]
+        # Should be truncated
+        self.assertIn("Predict the next Pick 3 Day draw numbers.", content)
+
+    def test_client_max_context_tokens_override(self):
+        """Client respects per-call max_context_tokens override."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(base_url="http://localhost:8000/v1", max_context_tokens=128)
+
+        records = [
+            {"draw": "Night", "num1": i % 10, "num2": (i + 1) % 10, "num3": (i + 2) % 10}
+            for i in range(30)
+        ]
+
+        # Default budget (128)
+        msg_default = client.create_chat_prompt(draw_type="Night", history_records=records)
+        # Override with smaller budget (32)
+        msg_small = client.create_chat_prompt(draw_type="Night", history_records=records, max_context_tokens=32)
+
+        # Smaller budget should have fewer history lines
+        default_lines = len(msg_default[0]["content"].split("\nPredict")[0].strip().split("\n"))
+        small_lines = len(msg_small[0]["content"].split("\nPredict")[0].strip().split("\n"))
+        self.assertLessEqual(small_lines, default_lines)
+
+    def test_client_init_max_context_tokens(self):
+        """Client stores max_context_tokens from constructor."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(max_context_tokens=256)
+        self.assertEqual(client.max_context_tokens, 256)
+
+        default_client = OMLXPick3Client()
+        self.assertEqual(default_client.max_context_tokens, 128)
+
+    def test_sliding_window_preserves_system_messages(self):
+        """Sliding window keeps all system messages regardless of max_history."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client()
+        messages = [
+            {"role": "system", "content": "You are a lottery predictor."},
+            {"role": "user", "content": "What are the numbers?"},
+            {"role": "assistant", "content": "The numbers are 1 2 3."},
+            {"role": "user", "content": "What about tonight?"},
+            {"role": "assistant", "content": "Tonight: 4 5 6."},
+        ]
+        # Keep only last 2 non-system messages
+        result = client.sliding_window_messages(messages, max_history=2)
+        # System message should be preserved
+        self.assertEqual(result[0]["role"], "system")
+        self.assertEqual(result[0]["content"], "You are a lottery predictor.")
+        # Only 2 non-system messages should remain
+        non_system = [m for m in result if m["role"] != "system"]
+        self.assertEqual(len(non_system), 2)
+        # Should be the last 2 messages
+        self.assertEqual(non_system[0]["content"], "What about tonight?")
+        self.assertEqual(non_system[1]["content"], "Tonight: 4 5 6.")
+
+    def test_sliding_window_no_truncation_when_fitting(self):
+        """Sliding window returns all messages when within limit."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client()
+        messages = [
+            {"role": "system", "content": "Instructions."},
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi"},
+        ]
+        result = client.sliding_window_messages(messages, max_history=5)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0]["role"], "system")
+
+    def test_sliding_window_none_max_history(self):
+        """Sliding window with None max_history returns messages unchanged."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(max_history=None)
+        messages = [
+            {"role": "system", "content": "Instructions."},
+            {"role": "user", "content": "Msg 1"},
+            {"role": "assistant", "content": "Reply 1"},
+            {"role": "user", "content": "Msg 2"},
+            {"role": "assistant", "content": "Reply 2"},
+        ]
+        result = client.sliding_window_messages(messages)
+        self.assertEqual(len(result), 5)
+
+    def test_sliding_window_uses_constructor_max_history(self):
+        """Sliding window uses max_history from constructor when not overridden."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(max_history=2)
+        messages = [
+            {"role": "system", "content": "Instructions."},
+            {"role": "user", "content": "Msg 1"},
+            {"role": "assistant", "content": "Reply 1"},
+            {"role": "user", "content": "Msg 2"},
+            {"role": "assistant", "content": "Reply 2"},
+        ]
+        # No per-call override — should use constructor's max_history=2
+        result = client.sliding_window_messages(messages)
+        non_system = [m for m in result if m["role"] != "system"]
+        self.assertEqual(len(non_system), 2)
+        self.assertEqual(result[0]["role"], "system")
+
+    def test_sliding_window_per_call_override(self):
+        """Per-call max_history overrides constructor default."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(max_history=4)
+        messages = [
+            {"role": "system", "content": "Instructions."},
+            {"role": "user", "content": "Msg 1"},
+            {"role": "assistant", "content": "Reply 1"},
+            {"role": "user", "content": "Msg 2"},
+            {"role": "assistant", "content": "Reply 2"},
+            {"role": "user", "content": "Msg 3"},
+            {"role": "assistant", "content": "Reply 3"},
+        ]
+        # Override to 2
+        result = client.sliding_window_messages(messages, max_history=2)
+        non_system = [m for m in result if m["role"] != "system"]
+        self.assertEqual(len(non_system), 2)
+
+    def test_create_chat_prompt_with_messages_sliding_window(self):
+        """create_chat_prompt applies sliding window when messages are provided."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client()
+        messages = [
+            {"role": "system", "content": "You are a lottery predictor."},
+            {"role": "user", "content": "Predict Day draw."},
+            {"role": "assistant", "content": "Day: 1 2 3."},
+            {"role": "user", "content": "Predict Night draw."},
+            {"role": "assistant", "content": "Night: 4 5 6."},
+        ]
+        result = client.create_chat_prompt(messages=messages, max_history=2)
+        # System preserved, only last 2 non-system kept
+        self.assertEqual(result[0]["role"], "system")
+        non_system = [m for m in result if m["role"] != "system"]
+        self.assertEqual(len(non_system), 2)
+
+    def test_sliding_window_multiple_system_messages(self):
+        """Sliding window preserves multiple system messages."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client()
+        messages = [
+            {"role": "system", "content": "System instruction 1."},
+            {"role": "user", "content": "Msg 1"},
+            {"role": "system", "content": "System instruction 2."},
+            {"role": "assistant", "content": "Reply 1"},
+            {"role": "user", "content": "Msg 2"},
+            {"role": "assistant", "content": "Reply 2"},
+        ]
+        result = client.sliding_window_messages(messages, max_history=2)
+        system_msgs = [m for m in result if m["role"] == "system"]
+        non_system = [m for m in result if m["role"] != "system"]
+        # Both system messages preserved
+        self.assertEqual(len(system_msgs), 2)
+        # Only last 2 non-system messages
+        self.assertEqual(len(non_system), 2)
+
+
+    def test_client_frequency_and_presence_penalty_defaults(self):
+        """Client initializes frequency and presence penalties to 0.5 by default."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client()
+        self.assertEqual(client.frequency_penalty, 0.5)
+        self.assertEqual(client.presence_penalty, 0.5)
+        self.assertEqual(client.stop_sequences, ["<EOS>", "[EOS]"])
+
+    def test_client_custom_penalty_values(self):
+        """Client accepts custom penalty and stop sequence values."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(
+            frequency_penalty=1.0,
+            presence_penalty=0.5,
+            stop_sequences=["<EOS>", "STOP"]
+        )
+        self.assertEqual(client.frequency_penalty, 1.0)
+        self.assertEqual(client.presence_penalty, 0.5)
+        self.assertEqual(client.stop_sequences, ["<EOS>", "STOP"])
+
+    def test_client_reset_session(self):
+        """reset_session resets generation parameters to defaults."""
+        from idaho.pick3.pick3_llm_ticket_model import OMLXPick3Client
+
+        client = OMLXPick3Client(frequency_penalty=0.0, presence_penalty=0.0)
+        self.assertEqual(client.frequency_penalty, 0.0)
+        self.assertEqual(client.presence_penalty, 0.0)
+
+        client.reset_session()
+        self.assertEqual(client.frequency_penalty, 0.5)
+        self.assertEqual(client.presence_penalty, 0.5)
+        self.assertEqual(client.stop_sequences, ["<EOS>", "[EOS]"])
+
+    def test_model_generate_with_frequency_penalty(self):
+        """Pick3LLM generation applies frequency penalty to reduce repetition."""
+        import mlx.core as mx
+        from idaho.pick3.pick3_llm_ticket_model import Pick3LLM, Pick3LLMConfig, Pick3Tokenizer
+
+        config = Pick3LLMConfig(vocab_size=75, max_seq_len=128, n_embd=32, n_head=2, n_layer=2)
+        model = Pick3LLM(config)
+        mx.eval(model.parameters())
+
+        tokenizer = Pick3Tokenizer()
+        history = [
+            {"draw": "Day", "num1": 1, "num2": 2, "num3": 3},
+            {"draw": "Night", "num1": 4, "num2": 5, "num3": 6},
+        ]
+        prompt = tokenizer.encode_history_prompt(history, "Night")
+
+        # Generate with frequency penalty
+        response = model.generate_response_text(
+            prompt_tokens=prompt,
+            draw_type="Night",
+            temperature=0.8,
+            frequency_penalty=1.0,
+            presence_penalty=0.5,
+        )
+        self.assertIn("Pick 3", response)
+
+    def test_model_generate_with_stop_tokens(self):
+        """Pick3LLM generation stops at configured stop token IDs."""
+        import mlx.core as mx
+        from idaho.pick3.pick3_llm_ticket_model import Pick3LLM, Pick3LLMConfig, Pick3Tokenizer
+
+        config = Pick3LLMConfig(vocab_size=75, max_seq_len=128, n_embd=32, n_head=2, n_layer=2)
+        model = Pick3LLM(config)
+        mx.eval(model.parameters())
+
+        tokenizer = Pick3Tokenizer()
+        history = [
+            {"draw": "Day", "num1": 1, "num2": 2, "num3": 3},
+        ]
+        prompt = tokenizer.encode_history_prompt(history, "Night")
+
+        # Without stop tokens, should generate 3 digits
+        response_no_stop = model.generate_response_text(
+            prompt_tokens=prompt,
+            draw_type="Night",
+            temperature=0.8,
+        )
+        self.assertIn("Pick 3", response_no_stop)
+
+        # With stop tokens, generation may stop early — verify it runs without error
+        response_with_stop = model.generate_response_text(
+            prompt_tokens=prompt,
+            draw_type="Night",
+            temperature=0.8,
+            stop=[0],
+        )
+        # Should return a valid response string
+        self.assertIsInstance(response_with_stop, str)
+        self.assertGreater(len(response_with_stop), 0)
+
+    def test_model_generate_localized_with_penalties(self):
+        """Pick3LLM generate_localized_prediction supports penalty parameters."""
+        import mlx.core as mx
+        from idaho.pick3.pick3_llm_ticket_model import Pick3LLM, Pick3LLMConfig, Pick3Tokenizer
+
+        config = Pick3LLMConfig(vocab_size=75, max_seq_len=128, n_embd=32, n_head=2, n_layer=2)
+        model = Pick3LLM(config)
+        mx.eval(model.parameters())
+
+        tokenizer = Pick3Tokenizer()
+        history = [
+            {"draw": "Day", "num1": 1, "num2": 2, "num3": 3},
+        ]
+        prompt = tokenizer.encode_history_prompt(history, "Night")
+
+        result = model.generate_localized_prediction(
+            prompt_tokens=prompt,
+            draw_type="Night",
+            temperature=0.8,
+            frequency_penalty=0.5,
+            presence_penalty=0.5,
+        )
+        self.assertIn("primary", result)
+        self.assertIn("Pick 3", result["primary"])
+
+
 if __name__ == "__main__":
     unittest.main()

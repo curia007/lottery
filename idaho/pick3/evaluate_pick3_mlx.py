@@ -107,6 +107,171 @@ class Pick3EvalTokenizer:
         tag = self.day_id if str(draw_type).strip().lower().startswith("day") else self.night_id
         return [tag, int(d1), int(d2), int(d3)]
 
+    @staticmethod
+    def tokens_per_draw() -> int:
+        """Returns the number of tokens used to encode a single historical draw.
+        
+        Each draw encodes to: <DRAW_TAG> + d1 + d2 + d3 + <SEP> = 5 tokens.
+        """
+        return 5
+
+    @staticmethod
+    def prompt_overhead_tokens() -> int:
+        """Returns the fixed overhead tokens for a prompt (BOS + PRED + target draw tag)."""
+        return 3  # <BOS> + <PRED> + <DRAW_TAG>
+
+    @staticmethod
+    def target_tokens() -> int:
+        """Returns the number of tokens for the target draw (3 digits + EOS)."""
+        return 4  # d1 + d2 + d3 + <EOS>
+
+    @staticmethod
+    def max_draws_for_token_budget(max_seq_len: int, reserve_for_target: int = 4) -> int:
+        """Calculates the maximum number of historical draws that fit within a token budget.
+        
+        Args:
+            max_seq_len: Maximum sequence length in tokens (model's max_position_embeddings).
+            reserve_for_target: Tokens reserved for the target draw (default 4: 3 digits + EOS).
+        
+        Returns:
+            Maximum number of historical draws that fit within the budget.
+        
+        Formula:
+            total_tokens = BOS + (draws * 6) + PRED + target_tag + target_digits + EOS
+            total_tokens = 1 + (draws * 6) + 2 + 4 = 7 + (draws * 6)
+            For input/target shift: total_tokens - 1 <= max_seq_len
+            Therefore: draws <= (max_seq_len - 7) / 6
+        """
+        overhead = 1 + 2  # BOS + PRED + target_tag
+        tokens_per_draw = 5  # <DRAW_TAG> + d1 + d2 + d3 + <SEP>
+        available = max_seq_len - overhead - reserve_for_target
+        if available <= 0:
+            return 0
+        return available // tokens_per_draw
+
+    def build_token_aware_window(
+        self,
+        records: List[Dict[str, Any]],
+        target_draw: Dict[str, Any],
+        max_seq_len: int = 128,
+        min_draws: int = 1,
+    ) -> Tuple[List[int], int]:
+        """Builds a token-aware sliding window prompt that maximizes historical context.
+        
+        Dynamically calculates how many historical draws fit within the token budget,
+        ensuring the full sequence (prompt + target) stays within max_seq_len.
+        
+        Args:
+            records: Chronologically sorted draw records (oldest first).
+            target_draw: The target draw to predict.
+            max_seq_len: Maximum sequence length in tokens.
+            min_draws: Minimum number of historical draws to include.
+        
+        Returns:
+            Tuple of (prompt_tokens, prompt_length) where prompt_length is the
+            number of tokens in the prompt before the target digits.
+        """
+        max_draws = self.max_draws_for_token_budget(max_seq_len)
+        num_draws = max(min_draws, min(max_draws, len(records)))
+        history = records[-num_draws:] if num_draws < len(records) else records
+
+        prompt = self.encode_history_prompt(history, target_draw.get("draw", "Night"))
+        return prompt, len(prompt)
+
+    def truncate_to_fit(
+        self,
+        records: List[Dict[str, Any]],
+        target_draw: Dict[str, Any],
+        max_seq_len: int = 128,
+        reserve_for_target: int = 4,
+        min_draws: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Drops the oldest draw records until the encoded prompt fits within max_seq_len.
+
+        Iteratively removes the oldest (first) draw from the records list until
+        the full sequence (prompt + target digits + EOS) fits safely below the
+        server's maximum context length.
+
+        Args:
+            records: Chronologically sorted draw records (oldest first).
+            target_draw: The target draw to predict (must have 'draw' key).
+            max_seq_len: Maximum sequence length in tokens (server's limit).
+            reserve_for_target: Tokens reserved for the target draw (default 4).
+            min_draws: Minimum number of draws to keep even if budget is tight.
+
+        Returns:
+            A new list of draw records with the oldest entries removed so the
+            encoded sequence fits within max_seq_len.
+        """
+        if not records:
+            return []
+
+        records_list = list(records)
+
+        # Quick check: if the max_draws calculation already fits, return as-is
+        max_allowed = self.max_draws_for_token_budget(max_seq_len, reserve_for_target)
+        if len(records_list) <= max_allowed:
+            return records_list
+
+        # Iteratively drop oldest draws until the encoded sequence fits
+        truncated = records_list[-max_allowed:]
+
+        # Verify by actually encoding
+        prompt = self.encode_history_prompt(truncated, target_draw.get("draw", "Night"))
+        total_tokens = len(prompt) + reserve_for_target
+
+        # If still too long, keep dropping from the front (oldest)
+        while total_tokens > max_seq_len and len(truncated) > min_draws:
+            truncated = truncated[1:]
+            prompt = self.encode_history_prompt(truncated, target_draw.get("draw", "Night"))
+            total_tokens = len(prompt) + reserve_for_target
+
+        return truncated
+
+    def truncate_history_summary(
+        self,
+        history_summary: str,
+        max_tokens: int = 128,
+        reserve_for_prompt: int = 20,
+    ) -> str:
+        """Truncates a plain-text history summary to fit within a token budget.
+
+        Splits the summary by draw lines and removes the oldest lines until
+        the estimated token count fits.
+
+        Args:
+            history_summary: Plain-text summary of historical draws.
+            max_tokens: Maximum total tokens allowed (server's context limit).
+            reserve_for_prompt: Tokens reserved for the prediction prompt text.
+
+        Returns:
+            Truncated history summary string that fits within the token budget.
+        """
+        if not history_summary:
+            return ""
+
+        available = max_tokens - reserve_for_prompt
+        if available <= 0:
+            return ""
+
+        lines = history_summary.strip().split("\n")
+        if not lines:
+            return ""
+
+        # Count words as a rough token estimate and build from newest backward
+        truncated_lines = []
+        current_tokens = 0
+
+        for line in reversed(lines):
+            line_tokens = max(1, len(line.split()))
+            if current_tokens + line_tokens > available and truncated_lines:
+                break
+            truncated_lines.append(line)
+            current_tokens += line_tokens
+
+        truncated_lines.reverse()
+        return "\n".join(truncated_lines)
+
     def encode_history_prompt(
         self,
         history_draws: List[Dict[str, Any]],
@@ -153,10 +318,20 @@ def create_evaluation_batch(
     batch_size: int = 32,
     max_len: int = 128,
     tokenizer: Optional[Pick3EvalTokenizer] = None,
+    token_aware: bool = True,
 ) -> Tuple[Any, Any, Any]:
     """
-    Builds (inputs, targets, masks) where loss and accuracy are evaluated
-    strictly on the predicted target draw digits.
+    Builds (inputs, targets, masks) using a token-aware sliding window that maximizes
+    historical context within the model's sequence budget. Loss and accuracy are
+    evaluated strictly on the predicted target draw digits.
+    
+    Args:
+        records: Chronologically sorted draw records.
+        window_size: Minimum number of historical draws.
+        batch_size: Number of samples in the batch.
+        max_len: Maximum sequence length in tokens.
+        tokenizer: Optional Pick3EvalTokenizer instance.
+        token_aware: If True, dynamically calculate optimal window size based on token budget.
     """
     tok = tokenizer or Pick3EvalTokenizer()
 
@@ -164,20 +339,30 @@ def create_evaluation_batch(
     target_batch: List[List[int]] = []
     mask_batch: List[List[float]] = []
 
-    limit = min(window_size + batch_size, len(records))
+    # Calculate token-aware window size
+    if token_aware:
+        effective_window = Pick3EvalTokenizer.max_draws_for_token_budget(max_len)
+        effective_window = max(effective_window, window_size)  # At least window_size draws
+    else:
+        effective_window = window_size
 
-    for i in range(window_size, limit):
-        history = records[i - window_size : i]
+    limit = min(effective_window + batch_size, len(records))
+
+    for i in range(effective_window, limit):
+        history = records[i - effective_window : i]
         target_draw = records[i]
 
-        # Encode prompt
-        prompt = tok.encode_history_prompt(history, target_draw["draw"])
-        prompt_len = len(prompt)
+        # Encode prompt using token-aware window if available
+        if token_aware and hasattr(tok, 'build_token_aware_window'):
+            prompt, prompt_len = tok.build_token_aware_window(history, target_draw, max_len)
+        else:
+            prompt = tok.encode_history_prompt(history, target_draw["draw"])
+            prompt_len = len(prompt)
 
         # Append target digits and <EOS>
         full_seq = prompt + [int(target_draw["num1"]), int(target_draw["num2"]), int(target_draw["num3"]), tok.eos_id]
 
-        # Truncate if needed
+        # Truncate if needed (safety check)
         if len(full_seq) > max_len + 1:
             excess = len(full_seq) - (max_len + 1)
             full_seq = [tok.bos_id] + full_seq[1 + excess :]
