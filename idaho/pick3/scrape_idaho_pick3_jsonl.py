@@ -8,14 +8,25 @@ and outputs them as a JSONL file sorted chronologically (newest first).
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
-import argparse
+import urllib.request
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from typing import List, NamedTuple
-from urllib.request import urlopen, Request
+
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    BeautifulSoup = None
 
 # Ensure project root is on sys.path for package imports
 _SCRIPT_DIR = Path(__file__).resolve().parent
@@ -42,11 +53,28 @@ def resolve_default_output() -> Path:
     return DEFAULT_OUTPUT
 
 
-def fetch_html(url: str = URL) -> str:
-    """Fetch HTML content from the Idaho Lottery Pick 3 history page."""
-    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(req, timeout=30) as response:
-        return response.read().decode("utf-8")
+def fetch_html(url: str = URL, timeout: int = 30) -> str:
+    """Download the Idaho Lottery Pick 3 history page with urllib fallback."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+    if requests is not None:
+        try:
+            response = requests.get(url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response.text
+        except Exception:
+            pass
+
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
 
 
 def parse_draws(html: str) -> List[Pick3Draw]:
@@ -55,35 +83,47 @@ def parse_draws(html: str) -> List[Pick3Draw]:
     
     Returns deduplicated draws sorted chronologically (newest first).
     """
+    text = html
+    if BeautifulSoup is not None:
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
+            text = soup.get_text("\n", strip=True)
+        except Exception:
+            text = html
+    else:
+        # Strip script, style, and HTML tags using regex fallback
+        clean_text = re.sub(r"<(script|style|noscript)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", clean_text)
+
     # Match lines like: 2026-11-06 Night 4 2 8
     pattern = re.compile(r"(\d{4}-\d{2}-\d{2})\s+(Day|Night)\s+(\d)\s+(\d)\s+(\d)", re.IGNORECASE)
     
     draws = []
     seen = set()
-    for match in pattern.finditer(html):
+    for match in pattern.finditer(text):
         date, draw_type, d1, d2, d3 = match.groups()
-        key = (date, draw_type.capitalize())
+        draw_type_cap = draw_type.capitalize()
+        key = (date, draw_type_cap, int(d1), int(d2), int(d3))
         if key not in seen:
             seen.add(key)
             draws.append(Pick3Draw(
                 date=date,
-                draw=draw_type.capitalize(),
+                draw=draw_type_cap,
                 num1=int(d1),
                 num2=int(d2),
                 num3=int(d3),
             ))
     
-    # Sort by date descending (newest first), then Night before Day within same date
-    # Night=0, Day=1 so Night comes first when sorting ascending within a date
-    # We want newest dates first, so reverse the date order
-    draws.sort(key=lambda d: (d.date, 0 if d.draw == "Night" else 1))
-    # Now sort by date descending while preserving Night-before-Day within each date
-    from itertools import groupby
-    grouped = []
-    for date, group in groupby(draws, key=lambda d: d.date):
-        grouped.append(list(group))
-    grouped.sort(key=lambda g: g[0].date, reverse=True)
-    draws = [d for group in grouped for d in group]
+    # Sort newest first, Night before Day when dates are equal.
+    draws.sort(
+        key=lambda r: (
+            datetime.strptime(r.date, "%Y-%m-%d"),
+            1 if r.draw.lower() == "night" else 0,
+        ),
+        reverse=True,
+    )
     return draws
 
 

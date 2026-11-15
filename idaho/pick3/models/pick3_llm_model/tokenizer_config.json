@@ -6,7 +6,7 @@
   "eos_token": "<EOS>",
   "pad_token": "<PAD>",
   "unk_token": "[UNK]",
-  "model_max_length": 128,
+  "model_max_length": 64,
   "clean_up_tokenization_spaces": false,
   "chat_template": "{% for message in messages %}{% set content = (message['content'] if message['content'] is not none else '') | trim %}{% if loop.first and message['role'] != 'system' %}{{ '<BOS>' }}{% endif %}{% if message['role'] == 'system' %}{% if content %}{{ '<BOS>' ~ content ~ ' ' }}{% else %}{{ '<BOS>' }}{% endif %}{% elif message['role'] == 'user' %}{% if not loop.first and messages[loop.index0 - 1]['role'] == 'assistant' %}{{ ' ' }}{% endif %}{{ content ~ ' <PRED>' }}{% elif message['role'] == 'assistant' %}{% if content %}{{ ' ' ~ content ~ ' <EOS>' }}{% endif %}{% endif %}{% endfor %}{% if add_generation_prompt and (messages[-1]['role'] != 'assistant' or not (messages[-1]['content'] if messages[-1]['content'] is not none else '')) %}{{ ' ' }}{% endif %}",
   "added_tokens_decoder": {

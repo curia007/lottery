@@ -47,6 +47,32 @@ class TestScrapeIdahoPick3Jsonl(unittest.TestCase):
             Pick3Draw(date="2026-11-05", draw="Day", num1=9, num2=1, num3=0),
         )
 
+    def test_parse_draws_from_html_table(self):
+        sample_html = """
+        <table>
+            <tbody>
+                <tr class="odd">
+                    <td>2026-11-14 Night</td>
+                    <td class="winning-numbers"><span class="number">7</span> <span class="number">0</span> <span class="number">5</span></td>
+                </tr>
+                <tr class="even">
+                    <td>2026-11-14 Day</td>
+                    <td class="winning-numbers"><span class="number">9</span> <span class="number">8</span> <span class="number">7</span></td>
+                </tr>
+            </tbody>
+        </table>
+        """
+        draws = parse_draws(sample_html)
+        self.assertEqual(len(draws), 2)
+        self.assertEqual(
+            draws[0],
+            Pick3Draw(date="2026-11-14", draw="Night", num1=7, num2=0, num3=5),
+        )
+        self.assertEqual(
+            draws[1],
+            Pick3Draw(date="2026-11-14", draw="Day", num1=9, num2=8, num3=7),
+        )
+
     def test_parse_draws_deduplication_and_sorting(self):
         sample_html = """
         2026-10-01 Day 1 2 3
